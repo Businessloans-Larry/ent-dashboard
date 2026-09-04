@@ -273,7 +273,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Sep 4, 2026 10:10 AM</span>
+      <span id="policy">data as of Sep 4, 2026 10:29 AM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -579,6 +579,8 @@ const GROUPS = [
     ['workable_leads','Workable Leads',INT,1],
     ['unqualified_leads','Unqualified Leads',INT,1],
     ['unqualified_pct','Unqualified %',PCT1,0],
+    ['nonresponsive_count','Non-Responsive',INT,1],
+    ['nonresponsive_pct','Non-Responsive % of Leads',PCT1,0],
     ['lost_deals','Lost Deals',INT,1],
     ['lost_pct','Lost %',PCT1,0],
     ['avg_days_to_uq','Avg. Days to UQ',NUM1,0],
@@ -591,6 +593,10 @@ const GROUPS = [
     ['sdr_completed_app_pct','SDR Completed App %',PCT0,0],
     ['total_completed_apps','Total Completed Apps',INT,1],
     ['total_completed_app_pct','Total Completed App %',PCT1,0],
+    ['trucking_leads','Trucking Leads',INT,1],
+    ['trucking_pct','Trucking % of Total',PCT1,0],
+    ['trucking_signed','Trucking Signed',INT,1],
+    ['trucking_signed_pct','Trucking % of Signed',PCT1,0],
   ]],
   ['Submission & Approval', [
     ['submitted_apps','Submitted Apps',INT,1],
@@ -600,6 +606,9 @@ const GROUPS = [
     ['approval_amount','Approval Amount',MONEY0,1],
     ['approval_rate','Approval Rate',PCT2,0],
     ['pitched_count','Pitched Count',INT,1],
+    ['pitched_rate','Pitched % of Approvals',PCT1,0],
+    ['unreachable_count','Unable to Contact',INT,1],
+    ['unreachable_rate','Unable to Contact % of Approvals',PCT1,0],
   ]],
   ['Funding', [
     ['units','Units',INT,1],
@@ -713,12 +722,18 @@ function agg(months){
    'inbound_workable_leads','incomplete_sdr_leads','sdr_completed_apps',
    'total_completed_apps','submitted_apps','approvals','approval_amount',
    'pitched_count','funded_amount','units','commission_revenue','total_revenue',
-   'unqualified_leads','lost_deals'].forEach(k=>o[k]=S(k));
+   'unqualified_leads','lost_deals','unreachable_count',
+   'trucking_leads','trucking_signed','nonresponsive_count'].forEach(k=>o[k]=S(k));
   o.sdr_completed_app_pct   = R(S('sdr_completed_apps'), S('incomplete_sdr_leads'));
   o.total_completed_app_pct = R(S('total_completed_apps'), S('direct_leads'));
   o.submission_rate         = R(S('submitted_apps'), S('direct_leads'));
   o.submission_rate_less_fake=R(S('submitted_apps'), S('leads_less_fake'));
   o.approval_rate           = R(S('approvals'), S('submitted_apps'));
+  o.pitched_rate            = R(S('pitched_count'), S('approvals'));
+  o.unreachable_rate        = R(S('unreachable_count'), S('approvals'));
+  o.nonresponsive_pct       = R(S('nonresponsive_count'), S('direct_leads'));
+  o.trucking_pct            = R(S('trucking_leads'), S('direct_leads'));
+  o.trucking_signed_pct     = R(S('trucking_signed'), S('total_completed_apps'));
   o.average_loan_size       = S('units')?S('funded_amount')/S('units'):null;
   o.average_loan_size_ex_loc= S('_ex_loc_units')?S('_ex_loc_amount')/S('_ex_loc_units'):null;
   o.pct_loc                 = R(S('_loc_units'), S('units'));
@@ -1060,7 +1075,11 @@ const ROW_METRIC={
   submitted_apps:'submitted', submission_rate:'submitted',
   submission_rate_less_fake:'submitted',
   approvals:'approved', approval_amount:'approved', approval_rate:'approved',
-  pitched_count:'pitched',
+  pitched_count:'pitched', pitched_rate:'pitched',
+  unreachable_count:'unreachable', unreachable_rate:'unreachable',
+  nonresponsive_count:'nonresponsive', nonresponsive_pct:'nonresponsive',
+  trucking_leads:'trucking', trucking_pct:'trucking',
+  trucking_signed:'trucking_signed', trucking_signed_pct:'trucking_signed',
   units:'funded', funded_amount:'funded', average_loan_size:'funded',
   average_loan_size_ex_loc:'funded', pct_loc:'funded', win_rate:'funded',
   in_month_win_rate:'funded', avg_maturity:'funded',
@@ -1116,6 +1135,10 @@ const DRILL_METRIC={
   inbound_workable: r=>!r.sd&&!!r.wk,
   funded_fast: r=>!!r.fa&&r.dc!=null&&r.dc>=0&&r.dc<21,
   funded_slow: r=>!!r.fa&&r.dc!=null&&r.dc>=21,
+  unreachable: r=>!!r.ap&&(r.lr||'').toLowerCase()==='unable to contact',
+  nonresponsive:   r=>(r.ur||'').toLowerCase().includes('non-responsive'),
+  trucking:        r=>r['in']==='Transport & Warehousing',
+  trucking_signed: r=>r['in']==='Transport & Warehousing'&&!!r.sg,
 };
 function filterDeals(all, spec){
   const pred=DRILL_METRIC[spec.metric||'leads']||DRILL_METRIC.leads;
