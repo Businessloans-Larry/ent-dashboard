@@ -111,6 +111,15 @@ thead th.lbl{z-index:3}
 tbody tr:nth-child(even) td,tbody tr:nth-child(even) td.lbl{background:#FAFAFC}
 tbody tr:hover td,tbody tr:hover td.lbl{background:#EEF6FF}
 td.num{font-family:var(--mono);font-size:12.5px}
+/* Grid lines. The funnel is 30+ rows by 14 columns and the eye loses the
+   row on the way across, so both axes get a rule. Kept very light so the
+   red shading and the quarter columns still read as the loudest things. */
+#funnel tbody td,#funnel tbody th{border-bottom:1px solid #EDF0F5;
+  border-right:1px solid #EDF0F5}
+#funnel tbody td.lbl{border-right:1px solid #D6DEEA}
+#funnel thead th{border-right:1px solid #E4E9F2}
+#funnel tr.grp td{border:0}
+#funnel tbody tr:last-child td{border-bottom:0}
 td.total,th.total{border-left:2px solid var(--line)}
 td.total{font-weight:700;color:var(--navy)}
 td.na{color:#AEB4CC;font-style:italic;font-family:Inter,sans-serif;font-size:11.5px}
@@ -145,6 +154,11 @@ tr.grp td{background:var(--navy) !important;color:#fff;font:600 11px Inter,sans-
   align-items:center;gap:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tile.goal{border-left-color:var(--green)}
 .tile.under{border-left-color:var(--alert);background:#FFF4F2}
+td.over{background:#FDEBE8;color:#B3261E;font-weight:700}
+tr:nth-child(even) td.over{background:#FAE2DE}
+#funnel tbody tr:hover td.over{background:#F7D8D3}
+.legend{display:flex;align-items:center;gap:7px;font-size:12px;color:#6B7593;margin-top:9px}
+.legend i{display:inline-block;width:13px;height:13px;border-radius:3px;background:#FDEBE8;border:1px solid #E9BDB6}
 .tile.under .pace{color:var(--alert)}
 .tile.over .pace{color:#00A855}
 .bar{height:5px;background:var(--line);border-radius:3px;margin-top:5px;overflow:hidden}
@@ -273,7 +287,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Sep 4, 2026 10:29 AM</span>
+      <span id="policy">data as of Sep 4, 2026 10:42 AM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -325,6 +339,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
     </div>
   </div>
   <div class="scroll"><table id="funnel"></table></div>
+  <div class="legend" id="truck-legend" hidden></div>
 </section>
 
 
@@ -510,6 +525,15 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
 <details class="defs">
   <summary>Definitions &amp; data notes</summary>
   <dl>
+    <dt>Trucking rows &amp; the red shading</dt>
+    <dd>Trucking is the Transport &amp; Warehousing industry bucket &mdash; the same one the
+      Dashboard&rsquo;s By Industry panel uses, which is Zoho&rsquo;s
+      <code>transport_warehousing</code> value plus company names the industry field missed.
+      A red cell means that month&rsquo;s trucking share ran above its own historical average
+      since January 2025 (9.2% of total leads, 9.1% of signed, pooled across complete months
+      rather than averaging the monthly rates). It is a concentration flag, not a target miss:
+      red simply says more of that month&rsquo;s book than usual came from one industry.
+      The baseline moves as months complete.</dd>
     <dt>Workable Leads</dt>
     <dd>Excludes these unqualified reasons: Fake App, Fraud, Data Merch, Previous Default, Bad Contact Info.</dd>
     <dt>Inbound Completed Leads</dt>
@@ -752,6 +776,20 @@ function agg(months){
 
 /* A quarter subtotal is the range aggregation applied to that quarter's
    months - ratios recomputed from components, never averaged. */
+// Trucking concentration: shade any cell - month, quarter or total - whose
+// share runs above the pooled baseline since 2025. Purely a "look at this",
+// not a target miss.
+function shadeTrucking(td, key, v, when){
+  const TB=DATA.trucking_baseline;
+  if(!TB || v==null) return;
+  if(key!=='trucking_pct' && key!=='trucking_signed_pct') return;
+  const bar = key==='trucking_pct' ? TB.pct : TB.signed_pct;
+  if(bar==null || !(v>bar)) return;
+  td.classList.add('over');
+  td.title=when+' · '+v.toFixed(1)+'% vs the '+bar.toFixed(1)+
+    '% average since '+MLABEL(TB.from);
+}
+
 function qValue(key, qm, fmt){
   const CF=DATA.channel_funnel, L=DATA.loss_reasons;
   let v=null;
@@ -787,6 +825,16 @@ function qDrill(key, lab, qm, qName){
 /* ---------- funnel ------------------------------------------------------- */
 function renderFunnel(){
   const months=RANGE, cm=DATA.pacing?.month, t=document.getElementById('funnel');
+  const TB=DATA.trucking_baseline, lg=document.getElementById('truck-legend');
+  if(lg){
+    if(TB){
+      lg.hidden=false;
+      lg.innerHTML='<i></i><span><b>Red</b> marks a month where trucking ran above its own historical share &mdash; '+TB.pct.toFixed(1)+'% of total leads and '+
+        TB.signed_pct.toFixed(1)+'% of signed, averaged across '+TB.months+
+        ' complete months from '+MLABEL(TB.from)+' to '+MLABEL(TB.to)+
+        '. It flags concentration, not a missed target.</span>';
+    } else lg.hidden=true;
+  }
   t.innerHTML='';
   const thead=el('thead'), hr=el('tr');
   hr.appendChild(el('th','lbl',''));
@@ -886,6 +934,7 @@ function renderFunnel(){
         const s=fmt(v==null?null:v);
         if(s===null){td.textContent='—';td.className='num na'+(m===cm?' cur':'');}
         else td.textContent=s;
+        shadeTrucking(td, key, v, label(m));
         if(key==='avg_maturity'&&DATA.metrics[m]){
           const n=DATA.metrics[m].avg_maturity_n,of=DATA.metrics[m].avg_maturity_of;
           if(of){td.title=n+' of '+of+' funded deals carry a signed date';
@@ -926,6 +975,7 @@ function renderFunnel(){
           const qtd=el('td','num q');
           qtd.textContent = qValue(key, qm, fmt);
           qtd.title=qEnd[m]+' · '+lab;
+          shadeTrucking(qtd, key, agg(qm)[key], qEnd[m]);
           if(key.startsWith('__lr:')||key.startsWith('__ur:')){
             const isLost=key.startsWith('__lr:');
             const L2=DATA.loss_reasons, r2=key.slice(5);
@@ -966,6 +1016,7 @@ function renderFunnel(){
       const s=fmt(tv);
       td.textContent=s===null?'—':s;
       if(s===null)td.className='num total na';
+      shadeTrucking(td, key, tv, 'the selected range');
       if(shareSuffix){
         const sp=el('span','imom');
         sp.textContent='  '+shareSuffix.pct+'%';
