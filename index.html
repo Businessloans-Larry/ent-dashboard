@@ -287,13 +287,14 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Sep 4, 2026 10:42 AM</span>
+      <span id="policy">data as of Sep 8, 2026 2:01 PM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
       
       <button class="tab" data-view="mix" onclick="showView('mix')">Dashboard</button>
       <button class="tab" data-view="loss" onclick="showView('loss')">Loss &amp; Unqual</button>
+      <button class="tab" data-view="sdr" onclick="showView('sdr')">SDR</button>
     </div>
     
   </div>
@@ -505,6 +506,20 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
     <h2>Lenders by Deal Size</h2>
     <p class="note" id="lb-note">Deal count per band &mdash; who funds what size</p>
     <div class="scroll"><table id="lender-band"></table></div>
+  </section>
+</div>
+
+<div id="view-sdr" style="display:none">
+  <section>
+    <div class="sec-head">
+      <div>
+        <h2>SDR Funnel</h2>
+        <p class="note" id="sdr-note">The same funnel over the SDR campaign cohort only &mdash;
+          deals carrying the SDR / incomplete campaign id, by lead created date</p>
+      </div>
+      <div id="sdr-share" class="note"></div>
+    </div>
+    <div class="scroll"><table id="sdr-funnel"></table></div>
   </section>
 </div>
 
@@ -738,8 +753,15 @@ const CH_METRIC='leads';
 /* ---------- range aggregation ------------------------------------------- */
 // Ratios and averages must be recomputed over the whole range from their
 // components - averaging monthly percentages would be wrong.
+// Which metric set the funnel machinery reads. Swapped for the duration of
+// one synchronous render so the SDR tab can reuse every part of it -
+// quarter columns, range picker, drill-down - instead of a second copy.
+let MSRC=null;
+const MS=()=>MSRC||DATA.metrics;
+
 function agg(months){
-  const S=k=>months.reduce((a,m)=>{const v=DATA.metrics[m]?.[k];return a+(v==null?0:v);},0);
+  const M0=MS();
+  const S=k=>months.reduce((a,m)=>{const v=M0[m]?.[k];return a+(v==null?0:v);},0);
   const R=(a,b)=>b?a/b*100:null;
   const o={};
   ['direct_leads','leads_less_fake','workable_leads','inbound_completed_leads',
@@ -807,7 +829,7 @@ function qValue(key, qm, fmt){
   const s = v==null ? null : fmt(v);
   return s===null ? '—' : s;
 }
-function qDrill(key, lab, qm, qName){
+function qDrill(key, lab, qm, qName, DR){
   if(key.startsWith('__ch:'))
     return openDrill(key.slice(5)+' — '+qName,
       {field:'ch',value:key.slice(5),months:qm,basis:'created',metric:'leads'});
@@ -819,13 +841,26 @@ function qDrill(key, lab, qm, qName){
   }
   if(ROW_METRIC[key])
     return openDrill(lab+' — '+qName,
-      {months:qm,basis:'created',metric:ROW_METRIC[key]});
+      {months:qm,basis:'created',metric:ROW_METRIC[key],...DR});
 }
 
 /* ---------- funnel ------------------------------------------------------- */
-function renderFunnel(){
-  const months=RANGE, cm=DATA.pacing?.month, t=document.getElementById('funnel');
-  const TB=DATA.trucking_baseline, lg=document.getElementById('truck-legend');
+function renderFunnel(cfg){
+  cfg = cfg || {};
+  // Set on every entry, so a cohort render can't leak into the next one and a
+  // bare renderFunnel() is the main funnel exactly as before. agg(), qValue()
+  // only ever run inside a render, so clearing it at the end is safe.
+  MSRC = cfg.metrics || null;
+  const DR = cfg.drill || null;   // captured, so click handlers still have it
+  const months=RANGE, cm=DATA.pacing?.month;
+  const t=document.getElementById(cfg.table || 'funnel');
+  if(!t) return;
+  // Channel breakdown, loss/unqualified reasons and the trucking baseline are
+  // all computed over the FULL population, so they'd be wrong on a cohort tab.
+  const extras = cfg.extras !== false;
+  const hide = new Set(cfg.hide || []);
+  const TB=extras?DATA.trucking_baseline:null;
+  const lg=extras?document.getElementById('truck-legend'):null;
   if(lg){
     if(TB){
       lg.hidden=false;
@@ -883,14 +918,16 @@ function renderFunnel(){
   const lostRows=reasonRows('lost_reasons','__lr:');
   const uqRows=reasonRows('uq_reasons','__ur:');
 
-  const allGroups = GROUPS.concat(CF ? [['Channel Breakdown  ·  '+CH_LABEL[CH_METRIC]+' by source',
+  const allGroups = GROUPS.concat(extras && CF ? [['Channel Breakdown  ·  '+CH_LABEL[CH_METRIC]+' by source',
     CF.order.filter(ch=>months.some(m=>CF.months[m]?.[ch]))
             .map(ch=>['__ch:'+ch, ch, CH_FMT, 1])]] : [])
-    .concat(lostRows.length ? [['Loss Breakdown  ·  lost deals by reason',
+    .concat(extras && lostRows.length ? [['Loss Breakdown  ·  lost deals by reason',
       [['lost_deals','Lost Deals — total',INT,1]].concat(lostRows)]] : [])
-    .concat(uqRows.length ? [['Unqualified Breakdown  ·  by reason',
+    .concat(extras && uqRows.length ? [['Unqualified Breakdown  ·  by reason',
       [['unqualified_leads','Unqualified Deals — total',INT,1]].concat(uqRows)]] : []);
-  allGroups.forEach(([gname,rows])=>{
+  allGroups.forEach(([gname,rows0])=>{
+    const rows = rows0.filter(r=>!hide.has(r[0]));
+    if(!rows.length) return;
     const gr=el('tr','grp'); const gc=el('td',null,gname);
     gc.colSpan=months.length+2; gr.appendChild(gc); tb.appendChild(gr);
     rows.forEach(([key,lab,fmt])=>{
@@ -904,7 +941,7 @@ function renderFunnel(){
         rl.onclick=()=>openDrill(r,spec);
       }else if(ROW_METRIC[key]){
         rl.classList.add('clickable');
-        rl.onclick=()=>openDrill(lab,{months:months,basis:'created',metric:ROW_METRIC[key]});
+        rl.onclick=()=>openDrill(lab,{months:months,basis:'created',metric:ROW_METRIC[key],...DR});
       }
       tr.appendChild(rl);
       const vals=[];
@@ -921,7 +958,7 @@ function renderFunnel(){
             const [n1,d1]=CH_RATE[CH_METRIC];
             v = b[d1] ? b[n1]/b[d1]*100 : null;
           } else v = b[CH_METRIC];
-        } else v = DATA.metrics[m]?.[key];
+        } else v = MS()[m]?.[key];
         const td=el('td','num'+(m===cm?' cur':''));
         if(key.startsWith('__ch:')){
           const b=CF.months[m]?.[key.slice(5)];
@@ -934,9 +971,9 @@ function renderFunnel(){
         const s=fmt(v==null?null:v);
         if(s===null){td.textContent='—';td.className='num na'+(m===cm?' cur':'');}
         else td.textContent=s;
-        shadeTrucking(td, key, v, label(m));
-        if(key==='avg_maturity'&&DATA.metrics[m]){
-          const n=DATA.metrics[m].avg_maturity_n,of=DATA.metrics[m].avg_maturity_of;
+        if(extras) shadeTrucking(td, key, v, label(m));
+        if(key==='avg_maturity'&&MS()[m]){
+          const n=MS()[m].avg_maturity_n,of=MS()[m].avg_maturity_of;
           if(of){td.title=n+' of '+of+' funded deals carry a signed date';
             if(n<of)td.style.borderBottom='2px dotted #FFC858';}
         }
@@ -965,7 +1002,7 @@ function renderFunnel(){
           }else if(ROW_METRIC[key]){
             td.classList.add('clickable');
             td.onclick=()=>openDrill(lab+' — '+label(m),
-              {months:[m],basis:'created',metric:ROW_METRIC[key]});
+              {months:[m],basis:'created',metric:ROW_METRIC[key],...DR});
           }
         }
         vals.push(v);
@@ -975,7 +1012,7 @@ function renderFunnel(){
           const qtd=el('td','num q');
           qtd.textContent = qValue(key, qm, fmt);
           qtd.title=qEnd[m]+' · '+lab;
-          shadeTrucking(qtd, key, agg(qm)[key], qEnd[m]);
+          if(extras) shadeTrucking(qtd, key, agg(qm)[key], qEnd[m]);
           if(key.startsWith('__lr:')||key.startsWith('__ur:')){
             const isLost=key.startsWith('__lr:');
             const L2=DATA.loss_reasons, r2=key.slice(5);
@@ -991,7 +1028,7 @@ function renderFunnel(){
           if(ROW_METRIC[key]||key.startsWith('__ch:')||
              key.startsWith('__lr:')||key.startsWith('__ur:')){
             qtd.classList.add('clickable');
-            qtd.onclick=()=>qDrill(key, lab, qm, qEnd[m]);
+            qtd.onclick=()=>qDrill(key, lab, qm, qEnd[m], DR);
           }
           tr.appendChild(qtd);
         }
@@ -1016,7 +1053,7 @@ function renderFunnel(){
       const s=fmt(tv);
       td.textContent=s===null?'—':s;
       if(s===null)td.className='num total na';
-      shadeTrucking(td, key, tv, 'the selected range');
+      if(extras) shadeTrucking(td, key, tv, 'the selected range');
       if(shareSuffix){
         const sp=el('span','imom');
         sp.textContent='  '+shareSuffix.pct+'%';
@@ -1028,6 +1065,7 @@ function renderFunnel(){
     });
   });
   t.appendChild(tb);
+  MSRC=null;   // render-time only; the drill filter is captured in DR above
 }
 
 /* ---------- production --------------------------------------------------- */
@@ -1056,6 +1094,31 @@ function renderProd(){
     tb.appendChild(tr);
   });
   t.appendChild(tb);
+}
+
+/* ---------- SDR cohort --------------------------------------------------- */
+// Same renderer, same rows, same drill-down - just pointed at sdr_metrics and
+// with every drill constrained to the cohort. Extras are off: channel
+// breakdown, loss reasons and the trucking baseline are all computed over the
+// full population and would be wrong here.
+function renderSdr(){
+  if(!DATA.sdr_metrics) return;
+  renderFunnel({table:'sdr-funnel', metrics:DATA.sdr_metrics,
+    drill:{sdr:1}, extras:false,
+    // inbound rows are zero by definition here, and the SDR-vs-total splits
+    // collapse onto each other once the cohort IS the SDR campaign
+    hide:['inbound_completed_leads','inbound_workable_leads',
+          'incomplete_sdr_leads','sdr_completed_apps']});
+  const S=DATA.sdr_metrics, M=DATA.metrics;
+  const g=(src,k)=>RANGE.reduce((a,m)=>a+(src[m]?.[k]||0),0);
+  const box=document.getElementById('sdr-share');
+  const sl=g(S,'direct_leads'), tl=g(M,'direct_leads');
+  const su=g(S,'units'), tu=g(M,'units');
+  const sf=g(S,'funded_amount'), tf=g(M,'funded_amount');
+  box.innerHTML = tl ?
+    '<b>'+INT(sl)+'</b> of '+INT(tl)+' leads in range ('+(sl/tl*100).toFixed(1)+'%) &middot; '+
+    '<b>'+INT(su)+'</b> of '+INT(tu)+' funded'+
+    (tf?' &middot; '+MONEY0(sf)+' of '+MONEY0(tf):'') : '';
 }
 
 /* ---------- YTD monthly averages (standalone) ---------------------------- */
@@ -1204,6 +1267,7 @@ function filterDeals(all, spec){
     if(spec.lreason && (r.lr||'Not recorded')!==spec.lreason) return false;
     if(spec.ureason && (r.ur||'Not recorded')!==spec.ureason) return false;
     if(spec.swin && r.swin!==spec.swin) return false;
+    if(spec.sdr && !r.sd) return false;
     if(basis==='funded' && !r.fa) return false;
     if(months){
       const k=((basis==='created'? r.c : basis==='closed'? r.cd : r.fd)||'').slice(0,7);
@@ -1218,9 +1282,9 @@ function filterDeals(all, spec){
     truncated:rows.length>limit};
 }
 
-async function getDeals(spec, p){
-  if(!p){
-    p=new URLSearchParams();
+async function getDeals(spec){
+  {
+    var p=new URLSearchParams();
     if(spec.field){ p.set('field',spec.field); p.set('value',spec.value); }
     if(spec.months) p.set('months',spec.months.join(','));
     p.set('basis',spec.basis||'funded');
@@ -1230,6 +1294,7 @@ async function getDeals(spec, p){
     if(spec.lreason) p.set('lreason',spec.lreason);
     if(spec.ureason) p.set('ureason',spec.ureason);
     if(spec.swin) p.set('swin',spec.swin);
+    if(spec.sdr) p.set('sdr','1');
     const tok=new URLSearchParams(location.search).get('t');
     if(tok) p.set('t',tok);
   }
@@ -1250,21 +1315,9 @@ async function openDrill(title, spec){
       '(localhost:8787) — this is a static snapshot.</td></tr></tbody>';
     return;
   }
-  const p=new URLSearchParams();
-  if(spec.field){ p.set('field',spec.field); p.set('value',spec.value); }
-  if(spec.months) p.set('months',spec.months.join(','));
-  p.set('basis',spec.basis||'funded');
-  if(spec.metric) p.set('metric',spec.metric);
-  if(spec.extraBand) p.set('band',spec.extraBand);
-  if(spec.sday) p.set('sday',spec.sday);
-  if(spec.lreason) p.set('lreason',spec.lreason);
-  if(spec.ureason) p.set('ureason',spec.ureason);
-  if(spec.swin) p.set('swin',spec.swin);
-  const tok=new URLSearchParams(location.search).get('t');
-  if(tok) p.set('t',tok);
   let res;
   try{
-    res = await getDeals(spec, p);
+    res = await getDeals(spec);
   }catch(e){
     t0.innerHTML='<tbody><tr><td style="padding:18px" class="err">'+
       'Could not load deals: '+e.message+'</td></tr></tbody>';
@@ -2813,7 +2866,7 @@ async function renderLoss(){
 function showView(v){
   // any view may be absent in an export - set only what exists
   [['view-funnel','funnel'],['view-pnl','pnl'],['view-mix','mix'],
-   ['view-loss','loss']].forEach(([id,name])=>{
+   ['view-loss','loss'],['view-sdr','sdr']].forEach(([id,name])=>{
     const n=document.getElementById(id);
     if(n) n.style.display = v===name?'':'none';
   });
@@ -2821,6 +2874,7 @@ function showView(v){
   // guess; redraw once the tab is actually visible so they fill it.
   if(v==='mix' && DATA) { try{ renderDaily(); drawQuarterBars(); }catch(e){} }
   if(v==='loss' && DATA) { try{ renderLoss(); }catch(e){} }
+  if(v==='sdr'  && DATA) { try{ renderSdr(); }catch(e){} }
   [...document.querySelectorAll('.tab')].forEach(t=>
     t.classList.toggle('on', t.dataset.view===v));
 }
