@@ -287,7 +287,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Sep 8, 2026 3:46 PM</span>
+      <span id="policy">data as of Sep 8, 2026 3:52 PM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -575,6 +575,14 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
       rather than averaging the monthly rates). It is a concentration flag, not a target miss:
       red simply says more of that month&rsquo;s book than usual came from one industry.
       The baseline moves as months complete.</dd>
+    <dt>Unqualified &mdash; Existing MCA(s)</dt>
+    <dd>Leads killed with the unqualified reason <code>Not Approved: Existing MCA(s)</code> &mdash;
+      the merchant already has advances stacked out. <b>A red cell means that month ran above the
+      average month so far this year</b>, counted across complete months only; the current month is
+      still shaded against that average even though it is not yet in it. Only the monthly cells
+      shade &mdash; the quarter and Total columns are sums of those months, so comparing them to a
+      monthly average would flag them on arithmetic alone. Hover a red cell for the count and the
+      average it beat. The row drills down like any other.</dd>
     <dt>Workable Leads</dt>
     <dd>Excludes these unqualified reasons: Fake App, Fraud, Data Merch, Previous Default, Bad Contact Info.</dd>
     <dt>Inbound Completed Leads</dt>
@@ -646,6 +654,7 @@ const GROUPS = [
     ['unqualified_pct','Unqualified %',PCT1,0],
     ['nonresponsive_count','Non-Responsive',INT,1],
     ['nonresponsive_pct','Non-Responsive % of Leads',PCT1,0],
+    ['existing_mca_count','Unqualified — Existing MCA(s)',INT,1],
     ['lost_deals','Lost Deals',INT,1],
     ['lost_pct','Lost %',PCT1,0],
     ['avg_days_to_uq','Avg. Days to UQ',NUM1,0],
@@ -795,7 +804,8 @@ function agg(months){
    'total_completed_apps','submitted_apps','approvals','approval_amount',
    'pitched_count','funded_amount','units','commission_revenue','total_revenue',
    'unqualified_leads','lost_deals','unreachable_count',
-   'trucking_leads','trucking_signed','nonresponsive_count'].forEach(k=>o[k]=S(k));
+   'trucking_leads','trucking_signed','nonresponsive_count',
+   'existing_mca_count'].forEach(k=>o[k]=S(k));
   o.sdr_completed_app_pct   = R(S('sdr_completed_apps'), S('incomplete_sdr_leads'));
   o.total_completed_app_pct = R(S('total_completed_apps'), S('direct_leads'));
   o.submission_rate         = R(S('submitted_apps'), S('direct_leads'));
@@ -827,9 +837,22 @@ function agg(months){
 // Trucking concentration: shade any cell - month, quarter or total - whose
 // share runs above the pooled baseline since 2025. Purely a "look at this",
 // not a target miss.
-function shadeTrucking(td, key, v, when){
+function shadeTrucking(td, key, v, when, monthly){
+  if(v==null) return;
+  // Existing MCA(s) is a COUNT, so only the monthly cells are comparable to a
+  // monthly average - the quarter and total columns are sums of those months
+  // and would trip the flag on arithmetic alone, so they are left unshaded.
+  if(key==='existing_mca_count'){
+    const B=DATA.existing_mca_baseline;
+    if(!monthly || !B || B.avg==null || !(v>B.avg)) return;
+    td.classList.add('over');
+    td.title=when+' · '+INT(v)+' vs the '+B.avg.toFixed(1)+
+      ' monthly average across '+B.months+' complete month'+(B.months===1?'':'s')+
+      ' in '+B.from.slice(0,4);
+    return;
+  }
   const TB=DATA.trucking_baseline;
-  if(!TB || v==null) return;
+  if(!TB) return;
   if(key!=='trucking_pct' && key!=='trucking_signed_pct') return;
   const bar = key==='trucking_pct' ? TB.pct : TB.signed_pct;
   if(bar==null || !(v>bar)) return;
@@ -997,7 +1020,7 @@ function renderFunnel(cfg){
         const s=fmt(v==null?null:v);
         if(s===null){td.textContent='—';td.className='num na'+(m===cm?' cur':'');}
         else td.textContent=s;
-        if(extras) shadeTrucking(td, key, v, label(m));
+        if(extras) shadeTrucking(td, key, v, label(m), true);
         if(key==='avg_maturity'&&MS()[m]){
           const n=MS()[m].avg_maturity_n,of=MS()[m].avg_maturity_of;
           if(of){td.title=n+' of '+of+' funded deals carry a signed date';
@@ -1237,6 +1260,7 @@ const ROW_METRIC={
   pitched_count:'pitched', pitched_rate:'pitched',
   unreachable_count:'unreachable', unreachable_rate:'unreachable',
   nonresponsive_count:'nonresponsive', nonresponsive_pct:'nonresponsive',
+  existing_mca_count:'existing_mca',
   trucking_leads:'trucking', trucking_pct:'trucking',
   trucking_signed:'trucking_signed', trucking_signed_pct:'trucking_signed',
   units:'funded', funded_amount:'funded', average_loan_size:'funded',
@@ -1296,6 +1320,7 @@ const DRILL_METRIC={
   funded_slow: r=>!!r.fa&&r.dc!=null&&r.dc>=21,
   unreachable: r=>!!r.ap&&(r.lr||'').toLowerCase()==='unable to contact',
   nonresponsive:   r=>(r.ur||'').toLowerCase().includes('non-responsive'),
+  existing_mca:    r=>(r.ur||'').toLowerCase().includes('existing mca'),
   trucking:        r=>r['in']==='Transport & Warehousing',
   trucking_signed: r=>r['in']==='Transport & Warehousing'&&!!r.sg,
 };
