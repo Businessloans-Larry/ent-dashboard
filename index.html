@@ -287,7 +287,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Sep 8, 2026 3:52 PM</span>
+      <span id="policy">data as of Sep 8, 2026 3:55 PM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -575,14 +575,15 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
       rather than averaging the monthly rates). It is a concentration flag, not a target miss:
       red simply says more of that month&rsquo;s book than usual came from one industry.
       The baseline moves as months complete.</dd>
-    <dt>Unqualified &mdash; Existing MCA(s)</dt>
-    <dd>Leads killed with the unqualified reason <code>Not Approved: Existing MCA(s)</code> &mdash;
-      the merchant already has advances stacked out. <b>A red cell means that month ran above the
-      average month so far this year</b>, counted across complete months only; the current month is
-      still shaded against that average even though it is not yet in it. Only the monthly cells
-      shade &mdash; the quarter and Total columns are sums of those months, so comparing them to a
-      monthly average would flag them on arithmetic alone. Hover a red cell for the count and the
-      average it beat. The row drills down like any other.</dd>
+    <dt>Existing MCA(s) % of Leads</dt>
+    <dd>Share of that month&rsquo;s Direct Leads killed with the unqualified reason
+      <code>Not Approved: Existing MCA(s)</code> &mdash; the merchant already has advances stacked
+      out. <b>A red cell means that period ran above the year-to-date rate</b>, pooled across this
+      year&rsquo;s complete months rather than averaging the monthly percentages, so a light month
+      doesn&rsquo;t count as much as a heavy one. The current month is excluded from the baseline
+      but is still shaded against it. Being a rate, the quarter and Total columns shade on the same
+      rule. Hover a red cell for the figure and the average it beat; the row drills down like any
+      other.</dd>
     <dt>Workable Leads</dt>
     <dd>Excludes these unqualified reasons: Fake App, Fraud, Data Merch, Previous Default, Bad Contact Info.</dd>
     <dt>Inbound Completed Leads</dt>
@@ -654,7 +655,7 @@ const GROUPS = [
     ['unqualified_pct','Unqualified %',PCT1,0],
     ['nonresponsive_count','Non-Responsive',INT,1],
     ['nonresponsive_pct','Non-Responsive % of Leads',PCT1,0],
-    ['existing_mca_count','Unqualified — Existing MCA(s)',INT,1],
+    ['existing_mca_pct','Existing MCA(s) % of Leads',PCT1,0],
     ['lost_deals','Lost Deals',INT,1],
     ['lost_pct','Lost %',PCT1,0],
     ['avg_days_to_uq','Avg. Days to UQ',NUM1,0],
@@ -814,6 +815,7 @@ function agg(months){
   o.pitched_rate            = R(S('pitched_count'), S('approvals'));
   o.unreachable_rate        = R(S('unreachable_count'), S('approvals'));
   o.nonresponsive_pct       = R(S('nonresponsive_count'), S('direct_leads'));
+  o.existing_mca_pct        = R(S('existing_mca_count'), S('direct_leads'));
   o.trucking_pct            = R(S('trucking_leads'), S('direct_leads'));
   o.trucking_signed_pct     = R(S('trucking_signed'), S('total_completed_apps'));
   o.average_loan_size       = S('units')?S('funded_amount')/S('units'):null;
@@ -837,17 +839,16 @@ function agg(months){
 // Trucking concentration: shade any cell - month, quarter or total - whose
 // share runs above the pooled baseline since 2025. Purely a "look at this",
 // not a target miss.
-function shadeTrucking(td, key, v, when, monthly){
+function shadeTrucking(td, key, v, when){
   if(v==null) return;
-  // Existing MCA(s) is a COUNT, so only the monthly cells are comparable to a
-  // monthly average - the quarter and total columns are sums of those months
-  // and would trip the flag on arithmetic alone, so they are left unshaded.
-  if(key==='existing_mca_count'){
+  // Existing MCA(s) as a share of leads. Being a rate it compares cleanly at
+  // every scale, so month, quarter and Total cells all shade off one baseline.
+  if(key==='existing_mca_pct'){
     const B=DATA.existing_mca_baseline;
-    if(!monthly || !B || B.avg==null || !(v>B.avg)) return;
+    if(!B || B.pct==null || !(v>B.pct)) return;
     td.classList.add('over');
-    td.title=when+' · '+INT(v)+' vs the '+B.avg.toFixed(1)+
-      ' monthly average across '+B.months+' complete month'+(B.months===1?'':'s')+
+    td.title=when+' · '+v.toFixed(1)+'% vs the '+B.pct.toFixed(1)+
+      '% average across '+B.months+' complete month'+(B.months===1?'':'s')+
       ' in '+B.from.slice(0,4);
     return;
   }
@@ -1020,7 +1021,7 @@ function renderFunnel(cfg){
         const s=fmt(v==null?null:v);
         if(s===null){td.textContent='—';td.className='num na'+(m===cm?' cur':'');}
         else td.textContent=s;
-        if(extras) shadeTrucking(td, key, v, label(m), true);
+        if(extras) shadeTrucking(td, key, v, label(m));
         if(key==='avg_maturity'&&MS()[m]){
           const n=MS()[m].avg_maturity_n,of=MS()[m].avg_maturity_of;
           if(of){td.title=n+' of '+of+' funded deals carry a signed date';
@@ -1260,7 +1261,7 @@ const ROW_METRIC={
   pitched_count:'pitched', pitched_rate:'pitched',
   unreachable_count:'unreachable', unreachable_rate:'unreachable',
   nonresponsive_count:'nonresponsive', nonresponsive_pct:'nonresponsive',
-  existing_mca_count:'existing_mca',
+  existing_mca_pct:'existing_mca',
   trucking_leads:'trucking', trucking_pct:'trucking',
   trucking_signed:'trucking_signed', trucking_signed_pct:'trucking_signed',
   units:'funded', funded_amount:'funded', average_loan_size:'funded',
