@@ -307,7 +307,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Sep 8, 2026 4:09 PM</span>
+      <span id="policy">data as of Sep 8, 2026 4:23 PM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -574,11 +574,8 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <section>
     <div class="sec-head">
       <div>
-        <h2>Industry Mix by Month</h2>
-        <p class="note">Every lead assigned an industry &mdash; Zoho&rsquo;s own value where it has one,
-          inferred from the company name where it says &ldquo;other&rdquo; or nothing, the same rule
-          the Dashboard pie uses. Keyed by <b>lead created date</b>. Each band is that industry&rsquo;s
-          share of the month.</p>
+        <h2>Industry Analysis</h2>
+        <p class="note" id="ind-intro"></p>
       </div>
       <div class="ind-ctl">
         <span>Shade by</span>
@@ -588,25 +585,48 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
         </select>
       </div>
     </div>
-    <div id="ind-mixbar"></div>
   </section>
 
   <section>
     <div class="sec-head">
-      <div>
-        <h2>Anomaly Grid</h2>
-        <p class="note" id="ind-note"></p>
-      </div>
-      <div class="legend2" id="ind-legend"></div>
+      <div><h2>All Leads</h2><p class="note">Every prospect, signed or not. Each band is that industry&rsquo;s share of the month; the grid below shades a month red when it ran hot against that industry&rsquo;s own year-to-date average and blue when it ran cold.</p></div>
+      <div class="legend2" id="indA-legend"></div>
     </div>
-    <div class="scroll"><table id="ind-grid"></table></div>
+    <div id="indA-mixbar"></div>
+    <div class="scroll" style="margin-top:16px"><table id="indA-grid"></table></div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div><h2>Signed Applications Only</h2><p class="note">Leads that produced a completed application. This is the mix of what actually <b>converts</b> &mdash; an industry sitting higher here than in the unsigned chart signs above its weight.</p></div>
+      <div class="legend2" id="indS-legend"></div>
+    </div>
+    <div id="indS-mixbar"></div>
+    <div class="scroll" style="margin-top:16px"><table id="indS-grid"></table></div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div><h2>Unsigned Leads Only</h2><p class="note">Leads that never signed anything. Where this chart runs heavier than the signed one, that industry is absorbing work without producing applications.</p></div>
+      <div class="legend2" id="indU-legend"></div>
+    </div>
+    <div id="indU-mixbar"></div>
+    <div class="scroll" style="margin-top:16px"><table id="indU-grid"></table></div>
+  </section>
+
+  <section>
+    <div class="sec-head"><div><h2>Signs Above / Below Its Weight</h2>
+      <p class="note">Each industry&rsquo;s share of signed applications against its share of
+        unsigned leads, year to date. A positive gap means it converts better than its volume
+        would suggest. Industries under 40 leads year to date are left out.</p></div></div>
+    <div class="scroll"><table id="ind-gap"></table></div>
   </section>
 
   <section>
     <div class="sec-head"><div><h2>Movers</h2>
-      <p class="note">Last complete month against each industry&rsquo;s year-to-date average,
-        largest change first. Industries under 15 leads year to date are left out &mdash; a
-        two-lead month swings their share too far to mean anything.</p></div></div>
+      <p class="note">Last complete month against each industry&rsquo;s year-to-date average across
+        all leads, largest change first. Industries under 15 leads year to date are left out &mdash;
+        a two-lead month swings their share too far to mean anything.</p></div></div>
     <div class="scroll"><table id="ind-movers"></table></div>
   </section>
 </div>
@@ -1254,42 +1274,68 @@ function renderSdr(){
 
 
 /* ---------- Industry analysis ------------------------------------------- */
-// Month-over-month industry mix off the LEAD base (the funded mix is far too
-// sparse to read monthly). Two views of the same numbers: a 100% stacked bar
-// for the shape of the mix, and a grid shaded by how far each month sits from
-// that industry's OWN year-to-date average - so a 2% industry doubling reads
-// as loudly as a 30% one moving three points.
+// Three cuts of the same lead base - all / signed / unsigned - each drawn as a
+// 100% stacked mix bar plus a grid shaded against that cut's OWN year-to-date
+// average, so a 2% industry doubling reads as loudly as a 30% one moving three
+// points. Non-prospect leads (fake, duplicate, fraud, bad contact) are dropped
+// upstream in build.py: they have no industry to find.
 const IND_PAL=['#002F68','#2A78D6','#00CDEF','#00CD67','#FFC858','#FB5038',
                '#8E6FD8','#12A0A0','#E07A3F','#7A8CA8','#B3489E','#4F7CB8'];
+const IND_CUTS=[
+  {pfx:'indA', data:'industry_months',          base:'industry_baseline'},
+  {pfx:'indS', data:'industry_months_signed',   base:'industry_baseline_signed'},
+  {pfx:'indU', data:'industry_months_unsigned', base:'industry_baseline_unsigned'}
+];
 let IND_BASIS='pp';
 
-function indRows(){
-  const IM=DATA.industry_months, B=DATA.industry_baseline;
+function indPrep(dataKey,baseKey){
+  const IM=DATA[dataKey], B=DATA[baseKey];
   if(!IM||!B) return null;
   const months=RANGE.filter(m=>IM.months[m]);
   if(!months.length) return null;
   const tot={}; months.forEach(m=>tot[m]=IM.totals[m]||0);
-  // rank by leads across the SELECTED range, not the baseline, so a range that
-  // predates an industry's arrival doesn't bury it at the bottom
   const sum={};
   months.forEach(m=>Object.entries(IM.months[m]||{}).forEach(([k,v])=>
     sum[k]=(sum[k]||0)+v.leads));
-  const names=Object.keys(sum).sort((a,b)=>sum[b]-sum[a]);
-  return {IM,B,months,tot,sum,names};
+  return {IM,B,months,tot,names:Object.keys(sum).sort((a,b)=>sum[b]-sum[a])};
 }
 
-function renderIndustry(){
-  const R=indRows();
-  const grid=document.getElementById('ind-grid');
-  if(!R){ if(grid) grid.innerHTML='<tbody><tr><td>No industry data in range.</td></tr></tbody>'; return; }
-  const {IM,B,months,tot,sum,names}=R;
+function indShade(v,b){
+  if(b==null||!isFinite(v)) return '';
+  const d = IND_BASIS==='pp' ? v-b : (b>0?(v-b)/b*100:0);
+  const cap = IND_BASIS==='pp' ? Math.max(3,b*0.6) : 60;
+  const t=Math.max(-1,Math.min(1,d/cap));
+  if(Math.abs(t)<0.18) return '';
+  const a=(Math.abs(t)*0.55).toFixed(3);
+  return t>0 ? 'background:rgba(251,80,56,'+a+')' : 'background:rgba(42,120,214,'+a+')';
+}
+
+function indSpark(vals,col){
+  if(vals.length<2) return '';
+  const W=76,H=20,mx=Math.max(...vals),mn=Math.min(...vals),sp=(mx-mn)||1;
+  const pts=vals.map((v,i)=>[(i/(vals.length-1))*(W-3)+1.5, H-2-((v-mn)/sp)*(H-5)]);
+  const last=pts[pts.length-1];
+  return '<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" aria-hidden="true">'+
+    '<polyline points="'+pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ')+
+    '" fill="none" stroke="'+col+'" stroke-width="1.6" stroke-linejoin="round" '+
+    'stroke-linecap="round" opacity="0.85"/><circle cx="'+last[0].toFixed(1)+'" cy="'+
+    last[1].toFixed(1)+'" r="2.2" fill="'+col+'"/></svg>';
+}
+
+function renderIndCut(cut){
+  const R=indPrep(cut.data,cut.base);
+  const grid=document.getElementById(cut.pfx+'-grid');
+  const bar=document.getElementById(cut.pfx+'-mixbar');
+  const leg=document.getElementById(cut.pfx+'-legend');
+  if(!grid||!bar) return null;
+  if(!R){ grid.innerHTML='<tbody><tr><td>No leads in range.</td></tr></tbody>';
+          bar.innerHTML=''; if(leg) leg.innerHTML=''; return null; }
+  const {IM,B,months,tot,names}=R;
   const TOP=11, top=names.slice(0,TOP), rest=names.slice(TOP);
+  const color={}; top.forEach((n,i)=>color[n]=IND_PAL[i%IND_PAL.length]);
   const share=(m,n)=>tot[m]?((IM.months[m][n]||{}).leads||0)/tot[m]*100:0;
   const restShare=m=>tot[m]?rest.reduce((a,n)=>a+((IM.months[m][n]||{}).leads||0),0)/tot[m]*100:0;
-  const color={}; top.forEach((n,i)=>color[n]=IND_PAL[i%IND_PAL.length]);
 
-  /* ---- 100% stacked bar ---- */
-  const bar=document.getElementById('ind-mixbar');
   bar.innerHTML=months.map(m=>{
     const segs=top.map(n=>{
       const v=share(m,n);
@@ -1298,45 +1344,27 @@ function renderIndustry(){
         (((IM.months[m][n]||{}).leads)||0)+' leads)"></div>';
     }).join('');
     const rv=restShare(m);
-    const restSeg=rv>0?'<div class="seg" style="height:'+rv+'%;background:#C8D2E0" title="'+
-      MLABEL(m)+' · all smaller industries · '+rv.toFixed(1)+'%"></div>':'';
-    return '<div class="imb"><div class="stack">'+segs+restSeg+'</div>'+
+    return '<div class="imb"><div class="stack">'+segs+
+      (rv>0?'<div class="seg" style="height:'+rv+'%;background:#C8D2E0" title="'+MLABEL(m)+
+        ' · all smaller industries · '+rv.toFixed(1)+'%"></div>':'')+'</div>'+
       '<div class="tl">'+INT(tot[m])+'</div>'+
       '<div class="ml">'+(months.length>9?short(m):label(m))+'</div></div>';
   }).join('');
 
-  document.getElementById('ind-legend').innerHTML=
-    top.map(n=>'<span><i class="swatch" style="background:'+color[n]+'"></i>'+n+'</span>').join('')+
+  if(leg) leg.innerHTML=top.map(n=>'<span><i class="swatch" style="background:'+color[n]+
+    '"></i>'+n+'</span>').join('')+
     (rest.length?'<span><i class="swatch" style="background:#C8D2E0"></i>'+rest.length+' smaller</span>':'');
-
-  /* ---- anomaly grid ---- */
-  const base=n=>(B.pct||{})[n];
-  document.getElementById('ind-note').innerHTML=
-    'Share of that month&rsquo;s leads. <b>Red runs hot, blue runs cold</b>, each against that '+
-    'industry&rsquo;s own average of '+B.leads.toLocaleString()+' leads across '+B.months+
-    ' complete month'+(B.months===1?'':'s')+' from '+MLABEL(B.from)+' to '+MLABEL(B.to)+
-    '. Colour depth is the size of the gap, so the loudest cells are the ones worth a look. '+
-    'Hover any cell for the lead count.';
-
-  const shade=(v,b)=>{
-    if(b==null||!isFinite(v)) return '';
-    let d = IND_BASIS==='pp' ? v-b : (b>0?(v-b)/b*100:0);
-    const cap = IND_BASIS==='pp' ? Math.max(3,b*0.6) : 60;
-    const t=Math.max(-1,Math.min(1,d/cap));
-    if(Math.abs(t)<0.18) return '';
-    const a=(Math.abs(t)*0.55).toFixed(3);
-    return t>0 ? 'background:rgba(251,80,56,'+a+')' : 'background:rgba(42,120,214,'+a+')';
-  };
 
   let h='<thead><tr><th class="lbl">Industry</th>'+
     months.map(m=>'<th>'+(months.length>9?short(m):label(m))+'</th>').join('')+
     '<th class="total">Avg</th><th>Trend</th></tr></thead><tbody>';
   top.forEach(n=>{
-    const b=base(n);
-    h+='<tr><td class="iname" title="'+n+'"><span class="swatch" style="background:'+color[n]+'"></span>'+n+'</td>';
+    const b=(B.pct||{})[n];
+    h+='<tr><td class="iname" title="'+n+'"><span class="swatch" style="background:'+
+       color[n]+'"></span>'+n+'</td>';
     months.forEach(m=>{
       const v=share(m,n), c=((IM.months[m][n]||{}).leads)||0;
-      h+='<td class="ic" style="'+shade(v,b)+'" title="'+MLABEL(m)+' · '+n+' · '+c+
+      h+='<td class="ic" style="'+indShade(v,b)+'" title="'+MLABEL(m)+' · '+n+' · '+c+
         ' of '+INT(tot[m])+' leads'+(b!=null?' · avg '+b.toFixed(1)+'%':'')+'">'+
         (v?v.toFixed(1)+'%':'<span style="color:#C0C8D4">–</span>')+'</td>';
     });
@@ -1345,56 +1373,82 @@ function renderIndustry(){
   });
   if(rest.length){
     h+='<tr><td class="iname"><span class="swatch" style="background:#C8D2E0"></span>'+
-       rest.length+' smaller industries</td>';
-    months.forEach(m=>{ h+='<td class="ic">'+restShare(m).toFixed(1)+'%</td>'; });
-    h+='<td class="ic total">–</td><td class="spark"></td></tr>';
+       rest.length+' smaller industries</td>'+
+       months.map(m=>'<td class="ic">'+restShare(m).toFixed(1)+'%</td>').join('')+
+       '<td class="ic total">–</td><td class="spark"></td></tr>';
   }
   h+='<tr><td class="iname"><b>Total leads</b></td>'+
      months.map(m=>'<td class="ic"><b>'+INT(tot[m])+'</b></td>').join('')+
      '<td class="ic total"><b>'+INT(months.reduce((a,m)=>a+tot[m],0))+'</b></td><td></td></tr>';
   grid.innerHTML=h+'</tbody>';
-
-  renderIndMovers(R,top.concat(rest));
+  return R;
 }
 
-// tiny inline sparkline; scaled to the row's own range so shape is readable
-function indSpark(vals,col){
-  if(vals.length<2) return '';
-  const W=76,H=20,mx=Math.max(...vals),mn=Math.min(...vals),sp=(mx-mn)||1;
-  const pts=vals.map((v,i)=>[ (i/(vals.length-1))*(W-3)+1.5,
-                              H-2-((v-mn)/sp)*(H-5) ]);
-  const d=pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
-  const last=pts[pts.length-1];
-  return '<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" aria-hidden="true">'+
-    '<polyline points="'+d+'" fill="none" stroke="'+col+'" stroke-width="1.6" '+
-    'stroke-linejoin="round" stroke-linecap="round" opacity="0.85"/>'+
-    '<circle cx="'+last[0].toFixed(1)+'" cy="'+last[1].toFixed(1)+'" r="2.2" fill="'+col+'"/></svg>';
+function renderIndustry(){
+  const cuts={};
+  IND_CUTS.forEach(c=>{ cuts[c.pfx]=renderIndCut(c); });
+  const A=cuts.indA;
+
+  const intro=document.getElementById('ind-intro');
+  if(intro){
+    const B=DATA.industry_baseline, ex=(DATA.industry_months||{}).excluded||0;
+    intro.innerHTML='Every lead assigned an industry &mdash; Zoho&rsquo;s own value where it has '+
+      'one, inferred from the company name where it says &ldquo;other&rdquo; or nothing, the same '+
+      'rule the Dashboard pie uses. Keyed by <b>lead created date</b>. '+
+      '<b>'+INT(ex)+' leads are excluded</b> as fake, duplicate, fraud or bad contact &mdash; '+
+      'those were never a real business, so they have no industry to find. '+
+      (B?'Baselines pool '+B.leads.toLocaleString()+' leads across '+B.months+
+         ' complete month'+(B.months===1?'':'s')+' from '+MLABEL(B.from)+' to '+MLABEL(B.to)+'.':'');
+  }
+
+  /* ---- signed vs unsigned gap ---- */
+  const gapEl=document.getElementById('ind-gap');
+  const SB=DATA.industry_baseline_signed, UB=DATA.industry_baseline_unsigned;
+  if(gapEl&&SB&&UB){
+    const names=[...new Set([...Object.keys(SB.pct||{}),...Object.keys(UB.pct||{})])];
+    const rows=names.map(n=>{
+      const sp=SB.pct[n]||0, up=UB.pct[n]||0;
+      const sl=Math.round(sp/100*SB.leads), ul=Math.round(up/100*UB.leads);
+      return {n,sp,up,sl,ul,d:sp-up};
+    }).filter(r=>r.sl+r.ul>=40).sort((a,b)=>b.d-a.d);
+    gapEl.innerHTML='<thead><tr><th class="lbl">Industry</th><th>Signed leads</th>'+
+      '<th>Share of signed</th><th>Unsigned leads</th><th>Share of unsigned</th>'+
+      '<th>Gap</th></tr></thead><tbody>'+
+      rows.map(r=>{
+        const big=Math.abs(r.d)>=1.0;
+        return '<tr><td class="iname">'+r.n+'</td><td class="ic">'+INT(r.sl)+
+          '</td><td class="ic">'+r.sp.toFixed(1)+'%</td><td class="ic">'+INT(r.ul)+
+          '</td><td class="ic">'+r.up.toFixed(1)+'%</td><td class="ic'+
+          (big&&r.d>0?' over':'')+'"'+(big&&r.d<0?' style="background:#E8F0FB;color:#1A4E8F;font-weight:700"':'')+
+          '>'+(r.d>0?'+':'')+r.d.toFixed(1)+' pp</td></tr>';
+      }).join('')+'</tbody>';
+  }
+
+  if(A) renderIndMovers(A);
 }
 
-function renderIndMovers(R,names){
+function renderIndMovers(R){
   const {IM,B,tot}=R;
   const el=document.getElementById('ind-movers');
-  const comp=(DATA.complete_months||[]).filter(m=>IM.months[m]);
+  if(!el||!B) return;
+  const comp=(DATA.complete_months||[]).filter(m=>IM.months[m]&&tot[m]!==undefined);
   const last=comp[comp.length-1];
-  if(!last||!B){ el.innerHTML=''; return; }
-  const rows=names.map(n=>{
-    const ytd=Object.entries(B.pct||{}).length?(B.pct[n]||0):0;
+  if(!last){ el.innerHTML=''; return; }
+  const rows=Object.keys(B.pct||{}).map(n=>{
     const leads=((IM.months[last][n]||{}).leads)||0;
     const v=tot[last]?leads/tot[last]*100:0;
-    const ytdLeads=Math.round((B.pct[n]||0)/100*B.leads);
-    return {n,v,ytd,leads,ytdLeads,d:v-ytd};
-  }).filter(r=>r.ytdLeads>=15)
-    .sort((a,b)=>Math.abs(b.d)-Math.abs(a.d));
-  el.innerHTML='<thead><tr><th class="lbl">Industry</th><th>'+MLABEL(last)+
-    ' leads</th><th>'+MLABEL(last)+' share</th><th>YTD avg share</th><th>Change</th>'+
-    '<th>Direction</th></tr></thead><tbody>'+
+    return {n,v,ytd:B.pct[n]||0,leads,ytdLeads:Math.round((B.pct[n]||0)/100*B.leads),d:v-(B.pct[n]||0)};
+  }).filter(r=>r.ytdLeads>=15).sort((a,b)=>Math.abs(b.d)-Math.abs(a.d));
+  el.innerHTML='<thead><tr><th class="lbl">Industry</th><th>'+MLABEL(last)+' leads</th>'+
+    '<th>'+MLABEL(last)+' share</th><th>YTD avg share</th><th>Change</th><th>Direction</th>'+
+    '</tr></thead><tbody>'+
     rows.map(r=>{
       const up=r.d>0, big=Math.abs(r.d)>=Math.max(1.5,r.ytd*0.35);
-      return '<tr><td class="iname">'+r.n+'</td><td class="ic">'+r.leads+
-        '</td><td class="ic">'+r.v.toFixed(1)+'%</td><td class="ic">'+r.ytd.toFixed(1)+
-        '%</td><td class="ic'+(big?' over':'')+'"'+(big&&!up?' style="background:#E8F0FB;color:#1A4E8F"':'')+
-        '>'+(up?'+':'')+r.d.toFixed(1)+' pp</td><td class="ic">'+
-        (up?'▲':'▼')+' '+(r.ytd>0?((r.v-r.ytd)/r.ytd*100).toFixed(0):'—')+'%</td></tr>';
+      return '<tr><td class="iname">'+r.n+'</td><td class="ic">'+r.leads+'</td><td class="ic">'+
+        r.v.toFixed(1)+'%</td><td class="ic">'+r.ytd.toFixed(1)+'%</td><td class="ic'+
+        (big&&up?' over':'')+'"'+(big&&!up?' style="background:#E8F0FB;color:#1A4E8F;font-weight:700"':'')+
+        '>'+(up?'+':'')+r.d.toFixed(1)+' pp</td><td class="ic">'+(up?'▲':'▼')+' '+
+        (r.ytd>0?((r.v-r.ytd)/r.ytd*100).toFixed(0):'—')+'%</td></tr>';
     }).join('')+'</tbody>';
 }
 
