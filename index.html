@@ -154,6 +154,26 @@ tr.grp td{background:var(--navy) !important;color:#fff;font:600 11px Inter,sans-
   align-items:center;gap:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tile.goal{border-left-color:var(--green)}
 .tile.under{border-left-color:var(--alert);background:#FFF4F2}
+
+/* ---- industry analysis ---- */
+.ind-ctl{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted)}
+.ind-ctl select{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:7px;
+  background:#fff;color:var(--dark-navy)}
+#ind-mixbar{display:flex;gap:4px;align-items:flex-end;margin-top:4px}
+.imb{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:5px}
+.imb .stack{width:100%;height:190px;display:flex;flex-direction:column-reverse;
+  border-radius:5px;overflow:hidden;background:var(--line)}
+.imb .seg{width:100%}
+.imb .ml{font-size:10.5px;color:var(--muted);white-space:nowrap}
+.imb .tl{font-size:11px;font-weight:700;color:var(--dark-navy)}
+#ind-grid td.ic{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+#ind-grid td.iname{text-align:left;white-space:nowrap;max-width:230px;overflow:hidden;
+  text-overflow:ellipsis}
+#ind-grid td.spark{padding:2px 8px}
+.swatch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:7px;
+  vertical-align:-1px}
+.ind-key{display:flex;gap:3px;align-items:center;font-size:11px;color:var(--muted)}
+.ind-key i{display:inline-block;width:17px;height:11px;border-radius:2px}
 td.over{background:#FDEBE8;color:#B3261E;font-weight:700}
 tr:nth-child(even) td.over{background:#FAE2DE}
 #funnel tbody tr:hover td.over{background:#F7D8D3}
@@ -287,7 +307,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Sep 8, 2026 3:55 PM</span>
+      <span id="policy">data as of Sep 8, 2026 4:00 PM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -295,6 +315,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
       <button class="tab" data-view="mix" onclick="showView('mix')">Dashboard</button>
       <button class="tab" data-view="loss" onclick="showView('loss')">Loss &amp; Unqual</button>
       <button class="tab" data-view="sdr" onclick="showView('sdr')">SDR</button>
+      <button class="tab" data-view="industry" onclick="showView('industry')">Industry Analysis</button>
     </div>
     
   </div>
@@ -546,6 +567,47 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
       <div id="sdrt-share" class="note"></div>
     </div>
     <div class="scroll"><table id="sdr-total-funnel"></table></div>
+  </section>
+</div>
+
+<div id="view-industry" style="display:none">
+  <section>
+    <div class="sec-head">
+      <div>
+        <h2>Industry Mix by Month</h2>
+        <p class="note">Every lead assigned an industry &mdash; Zoho&rsquo;s own value where it has one,
+          inferred from the company name where it says &ldquo;other&rdquo; or nothing, the same rule
+          the Dashboard pie uses. Keyed by <b>lead created date</b>. Each band is that industry&rsquo;s
+          share of the month.</p>
+      </div>
+      <div class="ind-ctl">
+        <span>Shade by</span>
+        <select id="ind-basis">
+          <option value="pp">Points vs. that industry&rsquo;s own average</option>
+          <option value="rel">Relative &mdash; % above / below its average</option>
+        </select>
+      </div>
+    </div>
+    <div id="ind-mixbar"></div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div>
+        <h2>Anomaly Grid</h2>
+        <p class="note" id="ind-note"></p>
+      </div>
+      <div class="legend2" id="ind-legend"></div>
+    </div>
+    <div class="scroll"><table id="ind-grid"></table></div>
+  </section>
+
+  <section>
+    <div class="sec-head"><div><h2>Movers</h2>
+      <p class="note">Last complete month against each industry&rsquo;s year-to-date average,
+        largest change first. Industries under 15 leads year to date are left out &mdash; a
+        two-lead month swings their share too far to mean anything.</p></div></div>
+    <div class="scroll"><table id="ind-movers"></table></div>
   </section>
 </div>
 
@@ -1189,6 +1251,156 @@ function renderSdr(){
   share('sdrc-share', DATA.sdr_complete_metrics);
   share('sdrt-share', DATA.sdr_total_metrics);
 }
+
+
+/* ---------- Industry analysis ------------------------------------------- */
+// Month-over-month industry mix off the LEAD base (the funded mix is far too
+// sparse to read monthly). Two views of the same numbers: a 100% stacked bar
+// for the shape of the mix, and a grid shaded by how far each month sits from
+// that industry's OWN year-to-date average - so a 2% industry doubling reads
+// as loudly as a 30% one moving three points.
+const IND_PAL=['#002F68','#2A78D6','#00CDEF','#00CD67','#FFC858','#FB5038',
+               '#8E6FD8','#12A0A0','#E07A3F','#7A8CA8','#B3489E','#4F7CB8'];
+let IND_BASIS='pp';
+
+function indRows(){
+  const IM=DATA.industry_months, B=DATA.industry_baseline;
+  if(!IM||!B) return null;
+  const months=RANGE.filter(m=>IM.months[m]);
+  if(!months.length) return null;
+  const tot={}; months.forEach(m=>tot[m]=IM.totals[m]||0);
+  // rank by leads across the SELECTED range, not the baseline, so a range that
+  // predates an industry's arrival doesn't bury it at the bottom
+  const sum={};
+  months.forEach(m=>Object.entries(IM.months[m]||{}).forEach(([k,v])=>
+    sum[k]=(sum[k]||0)+v.leads));
+  const names=Object.keys(sum).sort((a,b)=>sum[b]-sum[a]);
+  return {IM,B,months,tot,sum,names};
+}
+
+function renderIndustry(){
+  const R=indRows();
+  const grid=document.getElementById('ind-grid');
+  if(!R){ if(grid) grid.innerHTML='<tbody><tr><td>No industry data in range.</td></tr></tbody>'; return; }
+  const {IM,B,months,tot,sum,names}=R;
+  const TOP=11, top=names.slice(0,TOP), rest=names.slice(TOP);
+  const share=(m,n)=>tot[m]?((IM.months[m][n]||{}).leads||0)/tot[m]*100:0;
+  const restShare=m=>tot[m]?rest.reduce((a,n)=>a+((IM.months[m][n]||{}).leads||0),0)/tot[m]*100:0;
+  const color={}; top.forEach((n,i)=>color[n]=IND_PAL[i%IND_PAL.length]);
+
+  /* ---- 100% stacked bar ---- */
+  const bar=document.getElementById('ind-mixbar');
+  bar.innerHTML=months.map(m=>{
+    const segs=top.map(n=>{
+      const v=share(m,n);
+      return v<=0?'':'<div class="seg" style="height:'+v+'%;background:'+color[n]+
+        '" title="'+MLABEL(m)+' · '+n+' · '+v.toFixed(1)+'% ('+
+        (((IM.months[m][n]||{}).leads)||0)+' leads)"></div>';
+    }).join('');
+    const rv=restShare(m);
+    const restSeg=rv>0?'<div class="seg" style="height:'+rv+'%;background:#C8D2E0" title="'+
+      MLABEL(m)+' · all smaller industries · '+rv.toFixed(1)+'%"></div>':'';
+    return '<div class="imb"><div class="stack">'+segs+restSeg+'</div>'+
+      '<div class="tl">'+INT(tot[m])+'</div>'+
+      '<div class="ml">'+(months.length>9?short(m):label(m))+'</div></div>';
+  }).join('');
+
+  document.getElementById('ind-legend').innerHTML=
+    top.map(n=>'<span><i class="swatch" style="background:'+color[n]+'"></i>'+n+'</span>').join('')+
+    (rest.length?'<span><i class="swatch" style="background:#C8D2E0"></i>'+rest.length+' smaller</span>':'');
+
+  /* ---- anomaly grid ---- */
+  const base=n=>(B.pct||{})[n];
+  document.getElementById('ind-note').innerHTML=
+    'Share of that month&rsquo;s leads. <b>Red runs hot, blue runs cold</b>, each against that '+
+    'industry&rsquo;s own average of '+B.leads.toLocaleString()+' leads across '+B.months+
+    ' complete month'+(B.months===1?'':'s')+' from '+MLABEL(B.from)+' to '+MLABEL(B.to)+
+    '. Colour depth is the size of the gap, so the loudest cells are the ones worth a look. '+
+    'Hover any cell for the lead count.';
+
+  const shade=(v,b)=>{
+    if(b==null||!isFinite(v)) return '';
+    let d = IND_BASIS==='pp' ? v-b : (b>0?(v-b)/b*100:0);
+    const cap = IND_BASIS==='pp' ? Math.max(3,b*0.6) : 60;
+    const t=Math.max(-1,Math.min(1,d/cap));
+    if(Math.abs(t)<0.18) return '';
+    const a=(Math.abs(t)*0.55).toFixed(3);
+    return t>0 ? 'background:rgba(251,80,56,'+a+')' : 'background:rgba(42,120,214,'+a+')';
+  };
+
+  let h='<thead><tr><th class="lbl">Industry</th>'+
+    months.map(m=>'<th>'+(months.length>9?short(m):label(m))+'</th>').join('')+
+    '<th class="total">Avg</th><th>Trend</th></tr></thead><tbody>';
+  top.forEach(n=>{
+    const b=base(n);
+    h+='<tr><td class="iname" title="'+n+'"><span class="swatch" style="background:'+color[n]+'"></span>'+n+'</td>';
+    months.forEach(m=>{
+      const v=share(m,n), c=((IM.months[m][n]||{}).leads)||0;
+      h+='<td class="ic" style="'+shade(v,b)+'" title="'+MLABEL(m)+' · '+n+' · '+c+
+        ' of '+INT(tot[m])+' leads'+(b!=null?' · avg '+b.toFixed(1)+'%':'')+'">'+
+        (v?v.toFixed(1)+'%':'<span style="color:#C0C8D4">–</span>')+'</td>';
+    });
+    h+='<td class="ic total">'+(b!=null?b.toFixed(1)+'%':'–')+'</td>'+
+       '<td class="spark">'+indSpark(months.map(m=>share(m,n)),color[n])+'</td></tr>';
+  });
+  if(rest.length){
+    h+='<tr><td class="iname"><span class="swatch" style="background:#C8D2E0"></span>'+
+       rest.length+' smaller industries</td>';
+    months.forEach(m=>{ h+='<td class="ic">'+restShare(m).toFixed(1)+'%</td>'; });
+    h+='<td class="ic total">–</td><td class="spark"></td></tr>';
+  }
+  h+='<tr><td class="iname"><b>Total leads</b></td>'+
+     months.map(m=>'<td class="ic"><b>'+INT(tot[m])+'</b></td>').join('')+
+     '<td class="ic total"><b>'+INT(months.reduce((a,m)=>a+tot[m],0))+'</b></td><td></td></tr>';
+  grid.innerHTML=h+'</tbody>';
+
+  renderIndMovers(R,top.concat(rest));
+}
+
+// tiny inline sparkline; scaled to the row's own range so shape is readable
+function indSpark(vals,col){
+  if(vals.length<2) return '';
+  const W=76,H=20,mx=Math.max(...vals),mn=Math.min(...vals),sp=(mx-mn)||1;
+  const pts=vals.map((v,i)=>[ (i/(vals.length-1))*(W-3)+1.5,
+                              H-2-((v-mn)/sp)*(H-5) ]);
+  const d=pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+  const last=pts[pts.length-1];
+  return '<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" aria-hidden="true">'+
+    '<polyline points="'+d+'" fill="none" stroke="'+col+'" stroke-width="1.6" '+
+    'stroke-linejoin="round" stroke-linecap="round" opacity="0.85"/>'+
+    '<circle cx="'+last[0].toFixed(1)+'" cy="'+last[1].toFixed(1)+'" r="2.2" fill="'+col+'"/></svg>';
+}
+
+function renderIndMovers(R,names){
+  const {IM,B,tot}=R;
+  const el=document.getElementById('ind-movers');
+  const comp=(DATA.complete_months||[]).filter(m=>IM.months[m]);
+  const last=comp[comp.length-1];
+  if(!last||!B){ el.innerHTML=''; return; }
+  const rows=names.map(n=>{
+    const ytd=Object.entries(B.pct||{}).length?(B.pct[n]||0):0;
+    const leads=((IM.months[last][n]||{}).leads)||0;
+    const v=tot[last]?leads/tot[last]*100:0;
+    const ytdLeads=Math.round((B.pct[n]||0)/100*B.leads);
+    return {n,v,ytd,leads,ytdLeads,d:v-ytd};
+  }).filter(r=>r.ytdLeads>=15)
+    .sort((a,b)=>Math.abs(b.d)-Math.abs(a.d));
+  el.innerHTML='<thead><tr><th class="lbl">Industry</th><th>'+MLABEL(last)+
+    ' leads</th><th>'+MLABEL(last)+' share</th><th>YTD avg share</th><th>Change</th>'+
+    '<th>Direction</th></tr></thead><tbody>'+
+    rows.map(r=>{
+      const up=r.d>0, big=Math.abs(r.d)>=Math.max(1.5,r.ytd*0.35);
+      return '<tr><td class="iname">'+r.n+'</td><td class="ic">'+r.leads+
+        '</td><td class="ic">'+r.v.toFixed(1)+'%</td><td class="ic">'+r.ytd.toFixed(1)+
+        '%</td><td class="ic'+(big?' over':'')+'"'+(big&&!up?' style="background:#E8F0FB;color:#1A4E8F"':'')+
+        '>'+(up?'+':'')+r.d.toFixed(1)+' pp</td><td class="ic">'+
+        (up?'▲':'▼')+' '+(r.ytd>0?((r.v-r.ytd)/r.ytd*100).toFixed(0):'—')+'%</td></tr>';
+    }).join('')+'</tbody>';
+}
+
+document.addEventListener('change',e=>{
+  if(e.target&&e.target.id==='ind-basis'){ IND_BASIS=e.target.value; renderIndustry(); }
+});
 
 /* ---------- YTD monthly averages (standalone) ---------------------------- */
 function renderYTD(){
@@ -2939,7 +3151,7 @@ async function renderLoss(){
 function showView(v){
   // any view may be absent in an export - set only what exists
   [['view-funnel','funnel'],['view-pnl','pnl'],['view-mix','mix'],
-   ['view-loss','loss'],['view-sdr','sdr']].forEach(([id,name])=>{
+   ['view-loss','loss'],['view-sdr','sdr'],['view-industry','industry']].forEach(([id,name])=>{
     const n=document.getElementById(id);
     if(n) n.style.display = v===name?'':'none';
   });
@@ -2948,6 +3160,7 @@ function showView(v){
   if(v==='mix' && DATA) { try{ renderDaily(); drawQuarterBars(); }catch(e){} }
   if(v==='loss' && DATA) { try{ renderLoss(); }catch(e){} }
   if(v==='sdr'  && DATA) { try{ renderSdr(); }catch(e){} }
+  if(v==='industry' && DATA) { try{ renderIndustry(); }catch(e){} }
   [...document.querySelectorAll('.tab')].forEach(t=>
     t.classList.toggle('on', t.dataset.view===v));
 }
