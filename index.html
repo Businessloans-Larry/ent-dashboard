@@ -287,7 +287,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Sep 8, 2026 2:01 PM</span>
+      <span id="policy">data as of Sep 8, 2026 3:45 PM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -513,13 +513,39 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <section>
     <div class="sec-head">
       <div>
-        <h2>SDR Funnel</h2>
-        <p class="note" id="sdr-note">The same funnel over the SDR campaign cohort only &mdash;
+        <h2>Incomplete SDR Funnel</h2>
+        <p class="note" id="sdr-note">Retransmit leads the SDR has to get completed &mdash;
           deals carrying the SDR / incomplete campaign id, by lead created date</p>
       </div>
       <div id="sdr-share" class="note"></div>
     </div>
     <div class="scroll"><table id="sdr-funnel"></table></div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div>
+        <h2>Complete SDR Funnel</h2>
+        <p class="note">Leads that arrived already complete and had an SDR put on them to make
+          contact &mdash; source is SDR / Enterprise SDR, or a Supporting SDR is named, and
+          <b>not</b> the campaign above. Completed-app rows sit near 100% here by construction,
+          so the number that carries information is <b>lead volume</b>.</p>
+      </div>
+      <div id="sdrc-share" class="note"></div>
+    </div>
+    <div class="scroll"><table id="sdr-complete-funnel"></table></div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div>
+        <h2>Total SDR Funnel</h2>
+        <p class="note">Both cohorts together. They are defined to be mutually exclusive, so this
+          is a clean sum &mdash; every deal an SDR touched, by lead created date.</p>
+      </div>
+      <div id="sdrt-share" class="note"></div>
+    </div>
+    <div class="scroll"><table id="sdr-total-funnel"></table></div>
   </section>
 </div>
 
@@ -1109,16 +1135,35 @@ function renderSdr(){
     // collapse onto each other once the cohort IS the SDR campaign
     hide:['inbound_completed_leads','inbound_workable_leads',
           'incomplete_sdr_leads','sdr_completed_apps']});
-  const S=DATA.sdr_metrics, M=DATA.metrics;
+  // Complete-lead half: same renderer, drill constrained to r.sc. The SDR-vs-
+  // inbound split rows are meaningless here too, so they stay hidden.
+  if(DATA.sdr_complete_metrics)
+    renderFunnel({table:'sdr-complete-funnel', metrics:DATA.sdr_complete_metrics,
+      drill:{sdrComplete:1}, extras:false,
+      hide:['inbound_completed_leads','inbound_workable_leads',
+            'incomplete_sdr_leads','sdr_completed_apps']});
+  // Both cohorts. The two are mutually exclusive by construction, so drill on
+  // either flag being set gives exactly the union with no double count.
+  if(DATA.sdr_total_metrics)
+    renderFunnel({table:'sdr-total-funnel', metrics:DATA.sdr_total_metrics,
+      drill:{sdrAny:1}, extras:false,
+      hide:['inbound_completed_leads','inbound_workable_leads']});
+
+  const M=DATA.metrics;
   const g=(src,k)=>RANGE.reduce((a,m)=>a+(src[m]?.[k]||0),0);
-  const box=document.getElementById('sdr-share');
-  const sl=g(S,'direct_leads'), tl=g(M,'direct_leads');
-  const su=g(S,'units'), tu=g(M,'units');
-  const sf=g(S,'funded_amount'), tf=g(M,'funded_amount');
-  box.innerHTML = tl ?
-    '<b>'+INT(sl)+'</b> of '+INT(tl)+' leads in range ('+(sl/tl*100).toFixed(1)+'%) &middot; '+
-    '<b>'+INT(su)+'</b> of '+INT(tu)+' funded'+
-    (tf?' &middot; '+MONEY0(sf)+' of '+MONEY0(tf):'') : '';
+  const tl=g(M,'direct_leads'), tu=g(M,'units'), tf=g(M,'funded_amount');
+  const share=(id,S)=>{
+    const box=document.getElementById(id);
+    if(!box||!S) return;
+    const sl=g(S,'direct_leads'), su=g(S,'units'), sf=g(S,'funded_amount');
+    box.innerHTML = tl ?
+      '<b>'+INT(sl)+'</b> of '+INT(tl)+' leads in range ('+(sl/tl*100).toFixed(1)+'%) &middot; '+
+      '<b>'+INT(su)+'</b> of '+INT(tu)+' funded'+
+      (tf?' &middot; '+MONEY0(sf)+' of '+MONEY0(tf):'') : '';
+  };
+  share('sdr-share',  DATA.sdr_metrics);
+  share('sdrc-share', DATA.sdr_complete_metrics);
+  share('sdrt-share', DATA.sdr_total_metrics);
 }
 
 /* ---------- YTD monthly averages (standalone) ---------------------------- */
@@ -1268,6 +1313,8 @@ function filterDeals(all, spec){
     if(spec.ureason && (r.ur||'Not recorded')!==spec.ureason) return false;
     if(spec.swin && r.swin!==spec.swin) return false;
     if(spec.sdr && !r.sd) return false;
+    if(spec.sdrComplete && !r.sc) return false;
+    if(spec.sdrAny && !(r.sd||r.sc)) return false;
     if(basis==='funded' && !r.fa) return false;
     if(months){
       const k=((basis==='created'? r.c : basis==='closed'? r.cd : r.fd)||'').slice(0,7);
