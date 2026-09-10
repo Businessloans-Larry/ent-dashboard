@@ -309,7 +309,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Sep 8, 2026 4:39 PM</span>
+      <span id="policy">data as of Sep 10, 2026 4:46 PM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -650,6 +650,15 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
 <details class="defs">
   <summary>Definitions &amp; data notes</summary>
   <dl>
+    <dt>Contact Rate</dt>
+    <dd>Share of leads we can prove were reached. A lead counts as contacted if the
+      Contact Rate Time Stamp is set, OR the deal got as far as the Collecting stage
+      (you don&rsquo;t collect documents from someone you never spoke to), OR its
+      unqualified reason is one of the two &ldquo;Connected:&rdquo; dispositions, which
+      record that the prospect was reached and declined. It is a floor, not a ceiling &mdash;
+      a lead reached but never stamped and never dispositioned that way won&rsquo;t count.
+      The Sales-01 Working Date is deliberately NOT used: it is written automatically at
+      creation on essentially every deal, so it would put this at 100%.</dd>
     <dt>Trucking rows &amp; the red shading</dt>
     <dd>Trucking is the Transport &amp; Warehousing industry bucket &mdash; the same one the
       Dashboard&rsquo;s By Industry panel uses, which is Zoho&rsquo;s
@@ -735,6 +744,8 @@ const GROUPS = [
     ['direct_leads','Direct Leads',INT,1],
     ['leads_less_fake','Leads less Fake Leads',INT,1],
     ['workable_leads','Workable Leads',INT,1],
+    ['contacted_count','Contacted',INT,1],
+    ['contact_rate','Contact Rate',PCT1,0],
     ['unqualified_leads','Unqualified Leads',INT,1],
     ['unqualified_pct','Unqualified %',PCT1,0],
     ['nonresponsive_count','Non-Responsive',INT,1],
@@ -890,7 +901,7 @@ function agg(months){
    'pitched_count','funded_amount','units','commission_revenue','total_revenue',
    'unqualified_leads','lost_deals','unreachable_count',
    'trucking_leads','trucking_signed','nonresponsive_count',
-   'existing_mca_count'].forEach(k=>o[k]=S(k));
+   'existing_mca_count','contacted_count'].forEach(k=>o[k]=S(k));
   o.sdr_completed_app_pct   = R(S('sdr_completed_apps'), S('incomplete_sdr_leads'));
   o.total_completed_app_pct = R(S('total_completed_apps'), S('direct_leads'));
   o.submission_rate         = R(S('submitted_apps'), S('direct_leads'));
@@ -898,6 +909,7 @@ function agg(months){
   o.approval_rate           = R(S('approvals'), S('submitted_apps'));
   o.pitched_rate            = R(S('pitched_count'), S('approvals'));
   o.unreachable_rate        = R(S('unreachable_count'), S('approvals'));
+  o.contact_rate            = R(S('contacted_count'), S('direct_leads'));
   o.nonresponsive_pct       = R(S('nonresponsive_count'), S('direct_leads'));
   o.existing_mca_pct        = R(S('existing_mca_count'), S('direct_leads'));
   o.trucking_pct            = R(S('trucking_leads'), S('direct_leads'));
@@ -1528,6 +1540,7 @@ const ROW_METRIC={
   approvals:'approved', approval_amount:'approved', approval_rate:'approved',
   pitched_count:'pitched', pitched_rate:'pitched',
   unreachable_count:'unreachable', unreachable_rate:'unreachable',
+  contacted_count:'contacted', contact_rate:'contacted',
   nonresponsive_count:'nonresponsive', nonresponsive_pct:'nonresponsive',
   existing_mca_pct:'existing_mca',
   trucking_leads:'trucking', trucking_pct:'trucking',
@@ -1588,6 +1601,7 @@ const DRILL_METRIC={
   funded_fast: r=>!!r.fa&&r.dc!=null&&r.dc>=0&&r.dc<21,
   funded_slow: r=>!!r.fa&&r.dc!=null&&r.dc>=21,
   unreachable: r=>!!r.ap&&(r.lr||'').toLowerCase()==='unable to contact',
+  contacted:       r=>!!r.ct,
   nonresponsive:   r=>(r.ur||'').toLowerCase().includes('non-responsive'),
   existing_mca:    r=>(r.ur||'').toLowerCase().includes('existing mca'),
   trucking:        r=>r['in']==='Transport & Warehousing',
