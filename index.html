@@ -309,7 +309,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Sep 10, 2026 4:57 PM</span>
+      <span id="policy">data as of Sep 10, 2026 5:18 PM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -651,9 +651,13 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <summary>Definitions &amp; data notes</summary>
   <dl>
     <dt>Contact Rate</dt>
-    <dd>Of the applications that came in, the share we can prove we spoke to. A deal counts
-      as contacted if the
-      Contact Rate Time Stamp is set, OR the deal got as far as the Collecting stage
+    <dd>Of the <b>workable</b> applications that came in, the share we can prove we spoke to.
+      Fake apps, fraud, DataMerch, previous defaults and bad contact info are out of the
+      denominator &mdash; there was nobody to reach, so they shouldn&rsquo;t count against the
+      team. A deal counts as contacted if the
+      Contact Rate Time Stamp is set, OR the deal reached Closed Lost (it was pitched, so it
+      was reached &mdash; unless the loss reason is Unable to Contact or Non-responsive, which
+      say the opposite), OR the deal got as far as the Collecting stage
       (you don&rsquo;t collect documents from someone you never spoke to), OR its
       unqualified reason is one of the two &ldquo;Connected:&rdquo; dispositions, which
       record that the prospect was reached and declined. It is a floor, not a ceiling &mdash;
@@ -906,7 +910,7 @@ function agg(months){
    'pitched_count','funded_amount','units','commission_revenue','total_revenue',
    'unqualified_leads','lost_deals','unreachable_count',
    'trucking_leads','trucking_signed','nonresponsive_count',
-   'existing_mca_count','contacted_signed_count'].forEach(k=>o[k]=S(k));
+   'existing_mca_count','contacted_signed_count','workable_signed_count'].forEach(k=>o[k]=S(k));
   o.sdr_completed_app_pct   = R(S('sdr_completed_apps'), S('incomplete_sdr_leads'));
   o.total_completed_app_pct = R(S('total_completed_apps'), S('direct_leads'));
   o.submission_rate         = R(S('submitted_apps'), S('direct_leads'));
@@ -914,7 +918,7 @@ function agg(months){
   o.approval_rate           = R(S('approvals'), S('submitted_apps'));
   o.pitched_rate            = R(S('pitched_count'), S('approvals'));
   o.unreachable_rate        = R(S('unreachable_count'), S('approvals'));
-  o.contact_rate_signed     = R(S('contacted_signed_count'), S('total_completed_apps'));
+  o.contact_rate_signed     = R(S('contacted_signed_count'), S('workable_signed_count'));
   o.nonresponsive_pct       = R(S('nonresponsive_count'), S('direct_leads'));
   o.existing_mca_pct        = R(S('existing_mca_count'), S('direct_leads'));
   o.trucking_pct            = R(S('trucking_leads'), S('direct_leads'));
