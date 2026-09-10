@@ -309,7 +309,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Sep 10, 2026 4:46 PM</span>
+      <span id="policy">data as of Sep 10, 2026 4:52 PM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -658,7 +658,13 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
       record that the prospect was reached and declined. It is a floor, not a ceiling &mdash;
       a lead reached but never stamped and never dispositioned that way won&rsquo;t count.
       The Sales-01 Working Date is deliberately NOT used: it is written automatically at
-      creation on essentially every deal, so it would put this at 100%.</dd>
+      creation on essentially every deal, so it would put this at 100%.
+      <br><br>Two denominators are shown. <b>% of Leads</b> is the true top-of-funnel rate
+      but undercounts badly: Zoho&rsquo;s contact stamp lands on signed deals only &mdash; zero
+      unsigned leads in Jul&ndash;Aug carried it &mdash; so on unsigned leads the only trace of a
+      conversation is a &ldquo;Connected:&rdquo; disposition. <b>% of Signed Apps</b> asks a
+      narrower but far better measured question: of the applications that came in, how many
+      did we speak to.</dd>
     <dt>Trucking rows &amp; the red shading</dt>
     <dd>Trucking is the Transport &amp; Warehousing industry bucket &mdash; the same one the
       Dashboard&rsquo;s By Industry panel uses, which is Zoho&rsquo;s
@@ -745,7 +751,9 @@ const GROUPS = [
     ['leads_less_fake','Leads less Fake Leads',INT,1],
     ['workable_leads','Workable Leads',INT,1],
     ['contacted_count','Contacted',INT,1],
-    ['contact_rate','Contact Rate',PCT1,0],
+    ['contact_rate','Contact Rate \u2014 % of Leads',PCT1,0],
+    ['contacted_signed_count','Contacted & Signed',INT,1],
+    ['contact_rate_signed','Contact Rate \u2014 % of Signed Apps',PCT1,0],
     ['unqualified_leads','Unqualified Leads',INT,1],
     ['unqualified_pct','Unqualified %',PCT1,0],
     ['nonresponsive_count','Non-Responsive',INT,1],
@@ -901,7 +909,7 @@ function agg(months){
    'pitched_count','funded_amount','units','commission_revenue','total_revenue',
    'unqualified_leads','lost_deals','unreachable_count',
    'trucking_leads','trucking_signed','nonresponsive_count',
-   'existing_mca_count','contacted_count'].forEach(k=>o[k]=S(k));
+   'existing_mca_count','contacted_count','contacted_signed_count'].forEach(k=>o[k]=S(k));
   o.sdr_completed_app_pct   = R(S('sdr_completed_apps'), S('incomplete_sdr_leads'));
   o.total_completed_app_pct = R(S('total_completed_apps'), S('direct_leads'));
   o.submission_rate         = R(S('submitted_apps'), S('direct_leads'));
@@ -910,6 +918,7 @@ function agg(months){
   o.pitched_rate            = R(S('pitched_count'), S('approvals'));
   o.unreachable_rate        = R(S('unreachable_count'), S('approvals'));
   o.contact_rate            = R(S('contacted_count'), S('direct_leads'));
+  o.contact_rate_signed     = R(S('contacted_signed_count'), S('total_completed_apps'));
   o.nonresponsive_pct       = R(S('nonresponsive_count'), S('direct_leads'));
   o.existing_mca_pct        = R(S('existing_mca_count'), S('direct_leads'));
   o.trucking_pct            = R(S('trucking_leads'), S('direct_leads'));
@@ -1541,6 +1550,7 @@ const ROW_METRIC={
   pitched_count:'pitched', pitched_rate:'pitched',
   unreachable_count:'unreachable', unreachable_rate:'unreachable',
   contacted_count:'contacted', contact_rate:'contacted',
+  contacted_signed_count:'contacted_signed', contact_rate_signed:'contacted_signed',
   nonresponsive_count:'nonresponsive', nonresponsive_pct:'nonresponsive',
   existing_mca_pct:'existing_mca',
   trucking_leads:'trucking', trucking_pct:'trucking',
@@ -1601,7 +1611,8 @@ const DRILL_METRIC={
   funded_fast: r=>!!r.fa&&r.dc!=null&&r.dc>=0&&r.dc<21,
   funded_slow: r=>!!r.fa&&r.dc!=null&&r.dc>=21,
   unreachable: r=>!!r.ap&&(r.lr||'').toLowerCase()==='unable to contact',
-  contacted:       r=>!!r.ct,
+  contacted:        r=>!!r.ct,
+  contacted_signed: r=>!!r.cs,
   nonresponsive:   r=>(r.ur||'').toLowerCase().includes('non-responsive'),
   existing_mca:    r=>(r.ur||'').toLowerCase().includes('existing mca'),
   trucking:        r=>r['in']==='Transport & Warehousing',
