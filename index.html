@@ -309,7 +309,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Sep 21, 2026 2:23 PM</span>
+      <span id="policy">data as of Sep 21, 2026 2:25 PM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -792,8 +792,7 @@ const GROUPS = [
   ['Funding', [
     ['units','Units',INT,1],
     ['funded_amount','Funded Amount',MONEY0,1],
-    ['average_loan_size','Average Loan Size',MONEY0,0],
-    ['average_loan_size_term','Average Deal Size \u2014 term loans only',MONEY0,0],
+    ['average_loan_size_term','Avg Deal Size (term loans)',MONEY0,0],
     ['pct_loc','% LOC',PCT1,0],
     ['avg_maturity','Avg. Maturity  (signed → funded)',NUM1,0],
     ['win_rate','Win Rate',PCT0,0],
@@ -849,16 +848,14 @@ const PROD_KEYS=[
   ['new_originations','New Originations',MONEY0,0],
   ['new_revenue','New Revenue',MONEY0,0],
   ['commission_revenue','Commission Revenue',MONEY0,0],
-  ['new_avg_loan_size','New Avg Loan Size',MONEY0,1],
-  ['new_avg_loan_size_term','Avg Deal Size \u2014 term loans only',MONEY0,1],
+  ['new_avg_loan_size_term','Avg Deal Size (term loans)',MONEY0,1],
   ['new_revenue_per_close','New Revenue Per Close',PCT1,1],
 ];
 
 const PROD_ROWS=[
   ['new_business_units','New Business Units',INT],
   ['new_originations','New Originations',MONEY0],
-  ['new_avg_loan_size','New Avg Loan Size',MONEY0],
-  ['new_avg_loan_size_term','Avg Deal Size \u2014 term loans only',MONEY0],
+  ['new_avg_loan_size_term','Avg Deal Size (term loans)',MONEY0],
   ['new_revenue','New Revenue',MONEY0],
   ['commission_revenue','Commission Revenue',MONEY0],
   ['new_revenue_per_close','New Revenue Per Close',PCT1],
@@ -925,7 +922,6 @@ function agg(months){
   o.existing_mca_pct        = R(S('existing_mca_count'), S('direct_leads'));
   o.trucking_pct            = R(S('trucking_leads'), S('direct_leads'));
   o.trucking_signed_pct     = R(S('trucking_signed'), S('total_completed_apps'));
-  o.average_loan_size       = S('units')?S('funded_amount')/S('units'):null;
   o.average_loan_size_term  = S('_term_units')?S('_term_amount')/S('_term_units'):null;
   o.pct_loc                 = R(S('_loc_units'), S('units'));
   o.win_rate                = R(S('units'), S('approvals'));
@@ -1556,7 +1552,7 @@ const ROW_METRIC={
   existing_mca_pct:'existing_mca',
   trucking_leads:'trucking', trucking_pct:'trucking',
   trucking_signed:'trucking_signed', trucking_signed_pct:'trucking_signed',
-  units:'funded', funded_amount:'funded', average_loan_size:'funded',
+  units:'funded', funded_amount:'funded',
   average_loan_size_term:'funded', pct_loc:'funded', win_rate:'funded',
   in_month_win_rate:'funded', avg_maturity:'funded',
   commission_revenue:'funded', total_revenue:'funded',
@@ -2455,15 +2451,16 @@ function barList(elId,key,order,limit){
 function renderMix(){
   if(!DATA.mix) return;
   const M=DATA.mix.months;
-  let units=0, amount=0, revenue=0;
-  MIX_RANGE.forEach(m=>{const b=M[m]; if(b){units+=b.units; amount+=b.amount;}});
+  let units=0, amount=0, revenue=0, tUnits=0, tAmount=0;
+  MIX_RANGE.forEach(m=>{const b=M[m]; if(b){units+=b.units; amount+=b.amount;
+    tUnits+=b.term_units||0; tAmount+=b.term_amount||0;}});
   Object.values(mixAgg('lender')).forEach(v=>revenue+=v.revenue);
   const t=document.getElementById('mix-tiles'); t.innerHTML='';
   const exLoc=mixAgg('band');   // placeholder to keep shape; real tiles below
   const tiles=[
     ['Funded Volume',MONEY0(amount)],
     ['Deals Funded',INT(units)],
-    ['Avg Deal Size',units?MONEY0(amount/units):'—'],
+    ['Avg Deal Size (term loans)',tUnits?MONEY0(tAmount/tUnits):'—'],
     ['Revenue',MONEY0(revenue)],
     ['Yield',amount?PCT1(revenue/amount*100):'—'],
     ['Lenders Used',INT(Object.keys(mixAgg('lender')).length)],
