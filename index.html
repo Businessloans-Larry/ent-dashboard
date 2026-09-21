@@ -309,7 +309,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Sep 10, 2026 5:48 PM</span>
+      <span id="policy">data as of Sep 21, 2026 2:23 PM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -793,7 +793,7 @@ const GROUPS = [
     ['units','Units',INT,1],
     ['funded_amount','Funded Amount',MONEY0,1],
     ['average_loan_size','Average Loan Size',MONEY0,0],
-    ['average_loan_size_ex_loc','Average Loan Size (ex-LOC)',MONEY0,0],
+    ['average_loan_size_term','Average Deal Size \u2014 term loans only',MONEY0,0],
     ['pct_loc','% LOC',PCT1,0],
     ['avg_maturity','Avg. Maturity  (signed → funded)',NUM1,0],
     ['win_rate','Win Rate',PCT0,0],
@@ -850,6 +850,7 @@ const PROD_KEYS=[
   ['new_revenue','New Revenue',MONEY0,0],
   ['commission_revenue','Commission Revenue',MONEY0,0],
   ['new_avg_loan_size','New Avg Loan Size',MONEY0,1],
+  ['new_avg_loan_size_term','Avg Deal Size \u2014 term loans only',MONEY0,1],
   ['new_revenue_per_close','New Revenue Per Close',PCT1,1],
 ];
 
@@ -857,7 +858,7 @@ const PROD_ROWS=[
   ['new_business_units','New Business Units',INT],
   ['new_originations','New Originations',MONEY0],
   ['new_avg_loan_size','New Avg Loan Size',MONEY0],
-  ['new_avg_loan_size_ex_loc','New Avg Loan Size (ex-LOC)',MONEY0],
+  ['new_avg_loan_size_term','Avg Deal Size \u2014 term loans only',MONEY0],
   ['new_revenue','New Revenue',MONEY0],
   ['commission_revenue','Commission Revenue',MONEY0],
   ['new_revenue_per_close','New Revenue Per Close',PCT1],
@@ -910,7 +911,8 @@ function agg(months){
    'pitched_count','funded_amount','units','commission_revenue','total_revenue',
    'unqualified_leads','lost_deals','unreachable_count',
    'trucking_leads','trucking_signed','nonresponsive_count',
-   'existing_mca_count','contacted_signed_count','workable_signed_count'].forEach(k=>o[k]=S(k));
+   'existing_mca_count','contacted_signed_count','workable_signed_count',
+   '_term_units','_term_amount'].forEach(k=>o[k]=S(k));
   o.sdr_completed_app_pct   = R(S('sdr_completed_apps'), S('incomplete_sdr_leads'));
   o.total_completed_app_pct = R(S('total_completed_apps'), S('direct_leads'));
   o.submission_rate         = R(S('submitted_apps'), S('direct_leads'));
@@ -924,7 +926,7 @@ function agg(months){
   o.trucking_pct            = R(S('trucking_leads'), S('direct_leads'));
   o.trucking_signed_pct     = R(S('trucking_signed'), S('total_completed_apps'));
   o.average_loan_size       = S('units')?S('funded_amount')/S('units'):null;
-  o.average_loan_size_ex_loc= S('_ex_loc_units')?S('_ex_loc_amount')/S('_ex_loc_units'):null;
+  o.average_loan_size_term  = S('_term_units')?S('_term_amount')/S('_term_units'):null;
   o.pct_loc                 = R(S('_loc_units'), S('units'));
   o.win_rate                = R(S('units'), S('approvals'));
   o.in_month_win_rate       = R(S('_in_month_units'), S('approvals'));
@@ -1555,7 +1557,7 @@ const ROW_METRIC={
   trucking_leads:'trucking', trucking_pct:'trucking',
   trucking_signed:'trucking_signed', trucking_signed_pct:'trucking_signed',
   units:'funded', funded_amount:'funded', average_loan_size:'funded',
-  average_loan_size_ex_loc:'funded', pct_loc:'funded', win_rate:'funded',
+  average_loan_size_term:'funded', pct_loc:'funded', win_rate:'funded',
   in_month_win_rate:'funded', avg_maturity:'funded',
   commission_revenue:'funded', total_revenue:'funded',
   revenue_per_close:'funded', rpl:'funded', avg_days_to_uq:'unqualified',
