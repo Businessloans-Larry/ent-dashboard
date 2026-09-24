@@ -309,7 +309,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Sep 21, 2026 2:25 PM</span>
+      <span id="policy">data as of Sep 24, 2026 5:30 PM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -788,6 +788,8 @@ const GROUPS = [
     ['pitched_rate','Pitched % of Approvals',PCT1,0],
     ['unreachable_count','Unable to Contact',INT,1],
     ['unreachable_rate','Unable to Contact % of Approvals',PCT1,0],
+    ['killed_final_count','Killed in Final Review',INT,1],
+    ['killed_final_rate','Killed in Final Review % of Approvals',PCT1,0],
   ]],
   ['Funding', [
     ['units','Units',INT,1],
@@ -909,7 +911,7 @@ function agg(months){
    'unqualified_leads','lost_deals','unreachable_count',
    'trucking_leads','trucking_signed','nonresponsive_count',
    'existing_mca_count','contacted_signed_count','workable_signed_count',
-   '_term_units','_term_amount'].forEach(k=>o[k]=S(k));
+   '_term_units','_term_amount','killed_final_count'].forEach(k=>o[k]=S(k));
   o.sdr_completed_app_pct   = R(S('sdr_completed_apps'), S('incomplete_sdr_leads'));
   o.total_completed_app_pct = R(S('total_completed_apps'), S('direct_leads'));
   o.submission_rate         = R(S('submitted_apps'), S('direct_leads'));
@@ -917,6 +919,7 @@ function agg(months){
   o.approval_rate           = R(S('approvals'), S('submitted_apps'));
   o.pitched_rate            = R(S('pitched_count'), S('approvals'));
   o.unreachable_rate        = R(S('unreachable_count'), S('approvals'));
+  o.killed_final_rate       = R(S('killed_final_count'), S('approvals'));
   o.contact_rate_signed     = R(S('contacted_signed_count'), S('workable_signed_count'));
   o.nonresponsive_pct       = R(S('nonresponsive_count'), S('direct_leads'));
   o.existing_mca_pct        = R(S('existing_mca_count'), S('direct_leads'));
@@ -1548,6 +1551,7 @@ const ROW_METRIC={
   pitched_count:'pitched', pitched_rate:'pitched',
   unreachable_count:'unreachable', unreachable_rate:'unreachable',
   contacted_signed_count:'contacted_signed', contact_rate_signed:'contacted_signed',
+  killed_final_count:'killed_final', killed_final_rate:'killed_final',
   nonresponsive_count:'nonresponsive', nonresponsive_pct:'nonresponsive',
   existing_mca_pct:'existing_mca',
   trucking_leads:'trucking', trucking_pct:'trucking',
@@ -1610,6 +1614,7 @@ const DRILL_METRIC={
   unreachable: r=>!!r.ap&&(r.lr||'').toLowerCase()==='unable to contact',
   contacted:        r=>!!r.ct,
   contacted_signed: r=>!!r.cs,
+  killed_final:     r=>!!r.kf,
   nonresponsive:   r=>(r.ur||'').toLowerCase().includes('non-responsive'),
   existing_mca:    r=>(r.ur||'').toLowerCase().includes('existing mca'),
   trucking:        r=>r['in']==='Transport & Warehousing',
