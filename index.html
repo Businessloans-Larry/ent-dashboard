@@ -120,6 +120,14 @@ td.num{font-family:var(--mono);font-size:12.5px}
 #funnel thead th{border-right:1px solid #E4E9F2}
 #funnel tr.grp td{border:0}
 #funnel tbody tr:last-child td{border-bottom:0}
+/* Lenders by Deal Size runs a two-row header - band on top, the two years
+   under it - so the second row has to stick below the first, not on top of it */
+#lender-band thead tr:first-child th{border-bottom:1px solid var(--line)}
+#lender-band thead tr:first-child th.lbl{border-bottom:2px solid var(--navy)}
+#lender-band thead tr:nth-child(2) th{top:29px}
+#lender-band th.yr{font-size:11px;font-weight:600;color:var(--slate)}
+#lender-band th.gsep,#lender-band td.gsep{border-left:1px solid #D6DEEA}
+#lender-band th.nolb,#lender-band td.nolb{border-left:0}
 td.total,th.total{border-left:2px solid var(--line)}
 td.total{font-weight:700;color:var(--navy)}
 td.na{color:#AEB4CC;font-style:italic;font-family:Inter,sans-serif;font-size:11.5px}
@@ -216,6 +224,18 @@ code{font-family:var(--mono);font-size:12px;background:var(--bg);padding:1px 5px
 .ppanel .pk{font-size:10.5px}
 .ppanel .pk .pv{font-size:10.5px}
 .ppanel .pk .pu{font-size:9.5px;min-width:26px}
+/* the YTD panel carries every lender with 2+ deals, so it takes the whole row
+   and flows its legend into as many columns as the width allows */
+.ppanel.full{grid-column:1/-1}
+.ppanel.full .pie{width:172px;height:172px}
+/* multicolumn rather than grid so the lenders read DOWN each column in rank
+   order, and the Total still spans the full width underneath */
+.ppanel.full .pie-key{display:block;columns:250px;column-gap:26px;
+  max-height:none;min-width:0;overflow:visible}
+.ppanel.full .pk{font-size:11.5px;break-inside:avoid;margin-bottom:3px}
+.ppanel.full .pk .pv{font-size:11px}
+.ppanel.full .pk .pu{font-size:10.5px;min-width:64px}
+.ppanel.full .pk.tot{column-span:all;margin-top:6px}
 .pie path{stroke:#fff;stroke-width:1.5}
 .pie path:hover{opacity:.82}
 .pie-key{flex:1;min-width:210px;display:flex;flex-direction:column;gap:2px;
@@ -309,7 +329,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Sep 24, 2026 5:30 PM</span>
+      <span id="policy">data as of Sep 30, 2026 3:50 PM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -526,8 +546,13 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   </section>
 
   <section>
-    <h2>Lenders by Deal Size</h2>
-    <p class="note" id="lb-note">Deal count per band &mdash; who funds what size</p>
+    <div class="sec-head">
+      <div>
+        <h2>Lenders by Deal Size &mdash; Year over Year</h2>
+        <p class="note" id="lb-note">Deal count per band &mdash; who funds what size</p>
+      </div>
+      <div class="chips" id="lb-basis"></div>
+    </div>
     <div class="scroll"><table id="lender-band"></table></div>
   </section>
 </div>
@@ -2143,23 +2168,33 @@ function mixAgg(key,months){
   });
   return out;
 }
+// Enough distinct hues that the YTD lender pie - every lender with 2+ deals,
+// 14 slices this year - never has to repeat one. The two muted blues stay last
+// so they land on the smallest slices.
 const PIE_COLORS=['#002F68','#00CDEF','#00CD67','#FFC858','#60AFF0','#FB5038',
-  '#7C6BB5','#1FA9A0','#E08A3C','#9BB1D4','#B0BAC9'];
+  '#7C6BB5','#1FA9A0','#E08A3C','#D4508F','#5B8C3A','#8A6240','#4B5C7A',
+  '#C0459B','#2E7D8C','#9BB1D4','#B0BAC9'];
 
 const MIX_FIELD={lender:'ld',industry:'in',band:'bd',type:'ty',state:'st'};
-function drawPie(svgId,keyId,key,topN,months){
+function drawPie(svgId,keyId,key,topN,months,minUnits){
   const svg=document.getElementById(svgId), box=document.getElementById(keyId);
   if(!svg||!box) return;
   svg.innerHTML=''; box.innerHTML='';
   const agg=mixAgg(key,months);
   let rows=Object.entries(agg).sort((a,b)=>b[1].amount-a[1].amount);
   const total=rows.reduce((a,r)=>a+r[1].amount,0);
-  // keep the pie readable: top N slices, remainder folded into "Other"
-  if(topN && rows.length>topN){
-    const head=rows.slice(0,topN), tail=rows.slice(topN);
-    const rest=tail.reduce((a,r)=>({units:a.units+r[1].units,
-      amount:a.amount+r[1].amount}),{units:0,amount:0});
-    rows=head.concat([['+'+tail.length+' smaller',rest]]);
+  // Keep the pie readable. Two ways to cut it: the top N slices, or - when
+  // minUnits is given - every name that closed at least that many deals.
+  // Whatever is left over folds into one "+N smaller" slice.
+  if(minUnits || (topN && rows.length>topN)){
+    const head = minUnits ? rows.filter(r=>r[1].units>=minUnits) : rows.slice(0,topN);
+    const tail = minUnits ? rows.filter(r=>r[1].units<minUnits)  : rows.slice(topN);
+    // if nothing clears the bar, show them all rather than one blank blob
+    if(head.length && tail.length){
+      const rest=tail.reduce((a,r)=>({units:a.units+r[1].units,
+        amount:a.amount+r[1].amount}),{units:0,amount:0});
+      rows=head.concat([['+'+tail.length+' smaller',rest]]);
+    }else if(head.length) rows=head;
   }
   const R=80,C=86;
   svg.setAttribute('viewBox','0 0 172 172');
@@ -2199,7 +2234,7 @@ function drawPie(svgId,keyId,key,topN,months){
     box.appendChild(row);
     a0=a1;
   });
-  const tot=el('div','pk'); tot.style.borderTop='1px solid var(--line)';
+  const tot=el('div','pk tot'); tot.style.borderTop='1px solid var(--line)';
   tot.style.marginTop='3px'; tot.style.paddingTop='3px';
   tot.appendChild(el('i'));
   const nm=el('div','pn','Total'); nm.style.fontWeight='700'; tot.appendChild(nm);
@@ -2228,7 +2263,10 @@ function renderLenderPeriods(){
   const box=document.getElementById('lender-periods'); if(!box) return;
   box.innerHTML='';
   periodsFor().forEach((p,i)=>{
-    const panel=el('div','ppanel');
+    // YTD is the panel that actually gets read, so it runs full width and
+    // names every lender that closed 2+ deals instead of a top-6 cut
+    const ytd = p.tag==='Year to date';
+    const panel=el('div','ppanel'+(ytd?' full':''));
     const h=el('h3',null,p.label); panel.appendChild(h);
     let u=0,a=0;
     p.months.forEach(m=>{const b=DATA.mix.months[m]; if(b){u+=b.units;a+=b.amount;}});
@@ -2238,7 +2276,7 @@ function renderLenderPeriods(){
     const key=el('div','pie-key'); key.id='key-lp'+i;
     wrap.appendChild(svg); wrap.appendChild(key); panel.appendChild(wrap);
     box.appendChild(panel);
-    drawPie('pie-lp'+i,'key-lp'+i,'lender',6,p.months);
+    drawPie('pie-lp'+i,'key-lp'+i,'lender',ytd?0:6,p.months,ytd?2:0);
     h.classList.add('clickable');
     h.onclick=()=>openDrill(p.label+' — all lenders',
       {months:p.months,basis:'funded'});
@@ -2321,70 +2359,142 @@ function renderSigningProfile(){
     (skipped?' &middot; '+skipped+' excluded with no signature at all':'');
 }
 
+// Last year against this one, band by band. Deliberately NOT tied to the range
+// picker: the whole point is the two years side by side. 'matched' cuts last
+// year at the same month this year has reached, so the counts are comparable;
+// 'full' shows last year whole.
+let LB_BASIS='matched';
 function lenderBandTable(){
   const LB=DATA.lender_band, t=document.getElementById('lender-band');
   if(!LB||!t) return;
   const bands=DATA.mix.bands;
-  const agg={};                        // lender -> band -> {units, amount}
-  MIX_RANGE.forEach(m=>{
+  const all=Object.keys(LB).sort();
+  const years=[...new Set(all.map(m=>m.slice(0,4)))].sort().slice(-2);
+  if(!years.length) return;
+  const cur=years[years.length-1], prev=years[0];
+  // the last month this year carries data - everything before it exists in both
+  const cutoff=(all.filter(m=>m.startsWith(cur)).slice(-1)[0]||(cur+'-12')).slice(5,7);
+  const YM={};
+  years.forEach(y=>YM[y]=all.filter(m=>m.startsWith(y) &&
+    (LB_BASIS==='full' || m.slice(5,7)<=cutoff)));
+
+  const agg={};                        // lender -> year -> band -> {units, amount}
+  years.forEach(y=>YM[y].forEach(m=>{
     Object.entries(LB[m]||{}).forEach(([ld,bs])=>{
-      const o=agg[ld]||(agg[ld]={});
+      const oy=(agg[ld]||(agg[ld]={}))[y] || ((agg[ld])[y]={});
       Object.entries(bs).forEach(([b,v])=>{
-        const c=o[b]||(o[b]={units:0,amount:0});
+        const c=oy[b]||(oy[b]={units:0,amount:0});
         c.units+=v.units; c.amount+=v.amount;
       });
     });
-  });
-  const tot=ld=>bands.reduce((a,b)=>a+(agg[ld][b]?.units||0),0);
-  const lenders=Object.keys(agg).sort((a,b)=>tot(b)-tot(a));
+  }));
+  const cell=(ld,y,b)=>agg[ld]&&agg[ld][y]&&agg[ld][y][b];
+  const tot=(ld,y)=>bands.reduce((a,b)=>a+((cell(ld,y,b)||{}).units||0),0);
+  const lenders=Object.keys(agg).sort((a,b)=>
+    tot(b,cur)-tot(a,cur) || tot(b,prev)-tot(a,prev) || a.localeCompare(b));
 
   t.innerHTML='';
-  const thead=el('thead'),hr=el('tr');
-  hr.appendChild(el('th','lbl','Lender'));
-  bands.forEach(b=>hr.appendChild(el('th',null,b)));
-  hr.appendChild(el('th','total','Total'));
-  thead.appendChild(hr); t.appendChild(thead);
-
-  // column leader per band, so the winner in each size is obvious
-  const leader={};
-  bands.forEach(b=>{
-    let best=null,bu=0;
-    lenders.forEach(ld=>{const u=agg[ld][b]?.units||0; if(u>bu){bu=u;best=ld;}});
-    leader[b]=best;
+  // two header rows: the band spans its two years
+  const thead=el('thead'), hr1=el('tr'), hr2=el('tr');
+  const lh=el('th','lbl','Lender'); lh.rowSpan=2; hr1.appendChild(lh);
+  bands.forEach((b,bi)=>{
+    const th=el('th',bi?'gsep':null,b); th.colSpan=years.length; hr1.appendChild(th);
   });
+  const th0=el('th','total','Total'); th0.colSpan=years.length; hr1.appendChild(th0);
+  bands.concat(['__tot']).forEach(b=>years.forEach((y,yi)=>{
+    const cls=(b==='__tot' ? (yi===0?'yr total':'yr nolb')
+                           : (yi===0 && b!==bands[0] ? 'yr gsep' : 'yr'));
+    hr2.appendChild(el('th',cls, y===cur&&cutoff!=='12' ? y+' YTD' : y));
+  }));
+  thead.appendChild(hr1); thead.appendChild(hr2); t.appendChild(thead);
+
+  // leader per band per year, so the winner in each size is obvious both years
+  const leader={};
+  bands.forEach(b=>years.forEach(y=>{
+    let best=null,bu=0;
+    lenders.forEach(ld=>{const u=(cell(ld,y,b)||{}).units||0; if(u>bu){bu=u;best=ld;}});
+    leader[b+'|'+y]=best;
+  }));
+
+  const mkCell=(ld,y,b,cls)=>{
+    const v=cell(ld,y,b);
+    const td=el('td','num'+(cls?' '+cls:''));
+    td.textContent = v ? INT(v.units) : '–';
+    if(v){
+      td.title=ld+' · '+b+' · '+y+' — '+v.units+(v.units===1?' deal':' deals')+
+        ' · '+MONEY0(v.amount);
+      td.classList.add('clickable');
+      td.onclick=()=>openDrill(ld+' — '+b+' — '+y,
+        {field:'ld',value:ld,months:YM[y],basis:'funded',extraBand:b});
+      if(leader[b+'|'+y]===ld){ td.style.fontWeight='700'; td.style.color='var(--navy)'; }
+    }
+    return td;
+  };
 
   const tb=el('tbody');
   lenders.forEach(ld=>{
     const tr=el('tr');
     tr.appendChild(el('td','lbl',ld));
-    bands.forEach(b=>{
-      const v=agg[ld][b];
-      const td=el('td','num');
-      td.textContent = v ? INT(v.units) : '–';
-      if(v){
-        td.title=ld+' · '+b+' — '+v.units+(v.units===1?' deal':' deals')+
-          ' · '+MONEY0(v.amount);
+    bands.forEach((b,bi)=>years.forEach((y,yi)=>
+      tr.appendChild(mkCell(ld,y,b, yi===0&&bi ? 'gsep' : null))));
+    years.forEach((y,yi)=>{
+      const td=el('td','num total'+(yi?' nolb':'')); const n=tot(ld,y);
+      td.textContent=n?INT(n):'–';
+      if(n){
         td.classList.add('clickable');
-        td.onclick=()=>openDrill(ld+' — '+b,
-          {field:'ld',value:ld,months:MIX_RANGE,basis:'funded',
-           extraBand:b});
-        if(leader[b]===ld){ td.style.fontWeight='700'; td.style.color='var(--navy)'; }
+        td.onclick=()=>openDrill(ld+' — '+y,
+          {field:'ld',value:ld,months:YM[y],basis:'funded'});
+      }
+      // the change is the reason this table exists, so spell it out
+      if(y===cur){
+        const p=tot(ld,prev);
+        if(p||n){
+          const sp=el('span','imom'+(n===p?'':n>p?' up':' dn'));
+          sp.textContent = n===p ? ' =' : ' '+(n>p?'▲+':'▼')+(n-p);
+          sp.title=ld+' · '+n+' in '+cur+' vs '+p+' in '+prev;
+          td.appendChild(sp);
+        }
       }
       tr.appendChild(td);
     });
-    const td=el('td','num total'); td.textContent=INT(tot(ld)); tr.appendChild(td);
     tb.appendChild(tr);
   });
+
   const gr=el('tr','sum'); gr.appendChild(el('td','lbl','Total'));
-  let grand=0;
-  bands.forEach(b=>{
-    const u=lenders.reduce((a,ld)=>a+(agg[ld][b]?.units||0),0); grand+=u;
-    const td=el('td','num total'); td.textContent=u?INT(u):'–'; gr.appendChild(td);
+  const grand={}; years.forEach(y=>grand[y]=0);
+  bands.forEach((b,bi)=>years.forEach((y,yi)=>{
+    const u=lenders.reduce((a,ld)=>a+((cell(ld,y,b)||{}).units||0),0);
+    grand[y]+=u;
+    const td=el('td','num total'+(yi===0&&bi?' gsep':''));
+    td.textContent=u?INT(u):'–'; gr.appendChild(td);
+  }));
+  years.forEach((y,yi)=>{
+    const td=el('td','num total'+(yi?' nolb':''));
+    td.textContent=grand[y]?INT(grand[y]):'–';
+    gr.appendChild(td);
   });
-  const gt=el('td','num total'); gt.textContent=INT(grand);
-  gr.appendChild(gt); tb.appendChild(gr); t.appendChild(tb);
-  document.getElementById('lb-note').textContent=
-    'Deal count per band — who funds what size · bold = leader in that band · click a cell for the deals';
+  tb.appendChild(gr); t.appendChild(tb);
+
+  const MN=['January','February','March','April','May','June','July','August',
+            'September','October','November','December'];
+  document.getElementById('lb-note').innerHTML=
+    'Deal count per band, '+prev+' against '+cur+' &middot; independent of the range '+
+    'picker above &middot; bold = leader in that band that year &middot; ' +
+    (LB_BASIS==='matched' && cutoff!=='12'
+      ? 'both years cut at the end of '+MN[+cutoff-1]+', so the counts compare like for like'
+      : prev+' is the full year, '+cur+' is year to date &mdash; the counts are not '+
+        'over the same span') +
+    ' &middot; click a cell for the deals';
+
+  const box=document.getElementById('lb-basis');
+  if(box){
+    box.innerHTML='';
+    [['Same months','matched'],['Full '+prev,'full']].forEach(([lab,v])=>{
+      const b=el('button','chip'+(LB_BASIS===v?' on':''),lab);
+      b.onclick=()=>{ LB_BASIS=v; lenderBandTable(); };
+      box.appendChild(b);
+    });
+  }
 }
 
 function bandTable(){
