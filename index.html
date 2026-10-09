@@ -331,7 +331,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Oct 9, 2026 11:28 AM</span>
+      <span id="policy">data as of Oct 9, 2026 12:25 PM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -2086,16 +2086,30 @@ function drawQuarterBars(){
         }
         const flag=(key==='rpl' && st.held.length) ? st.held : null;
         const a1=sv('tspan'); a1.textContent=fmt(st[key]);
-        if(flag) a1.setAttribute('class','hmatv');
         t.appendChild(a1);
+        // RPL is graded against its OWN year's pooled rate: green 10%+ above,
+        // red 10%+ below, gold inside the band. Both sides of that comparison
+        // use matured months only, so a quarter is never judged against a
+        // figure that counted months it was not allowed to count itself.
+        let tip=null;
+        if(key==='rpl' && YR && st.rpl!=null){
+          const dv=(st.rpl-YR.v)/YR.v;
+          a1.setAttribute('fill', dv>=0.10 ? '#00A855' : dv<=-0.10 ? '#D14343' : '#C9900A');
+          tip='<b>'+q+' &middot; revenue per lead</b><br>'+fmt(st.rpl)+' vs '+
+            DOL(YR.v)+' for '+yr+'<br>'+(dv>=0?'+':'')+(dv*100).toFixed(1)+
+            '% against the year<br>'+st.rplN+(st.rplN===1?' month':' months')+' counted';
+        }else if(flag){
+          a1.setAttribute('class','hmatv');
+        }
         if(flag){
           const nm=flag.map(m=>MN[+m.slice(5,7)-1]).join(' & ');
           const f=sv('text',{class:'hmat',x:cx,y:y0+RY[r]+21,'text-anchor':'middle'});
           f.textContent=nm+' still maturing'; svg.appendChild(f);
-          hover(t,'<b>'+q+' &middot; revenue per lead</b><br>'+fmt(st[key])+' from '+
-            st.rplN+(st.rplN===1?' month':' months')+'<br>'+nm+
-            ' held back &mdash; still maturing');
+          tip=(tip||('<b>'+q+' &middot; revenue per lead</b><br>'+fmt(st[key])+' from '+
+            st.rplN+(st.rplN===1?' month':' months')))+
+            '<br>'+nm+' held back &mdash; still maturing';
         }
+        if(tip) hover(t,tip);
         // the year above already shows last year's figure, but the arrow saves
         // reading it off two panels up
         if(ly && ly[key]>0){
@@ -2117,7 +2131,10 @@ function drawQuarterBars(){
     '&middot; brackets carry the quarter total, and the figures above each quarter are per '+
     'completed month &middot; <span style="color:#B96C15">- - -</span> marks the revenue '+
     'average &middot; the figure beside each year is that whole year&rsquo;s revenue per lead, '+
-    'pooled rather than averaged across its quarters &middot; '+
+    'pooled rather than averaged across its quarters, and each quarter&rsquo;s figure is graded '+
+    'against it &mdash; <span style="color:#00A855;font-weight:700">green</span> 10%+ above, '+
+    '<span style="color:#C9900A;font-weight:700">gold</span> within 10%, '+
+    '<span style="color:#D14343;font-weight:700">red</span> 10%+ below &middot; '+
     'revenue per lead counts only months 30+ days past close, where ~95% of '+
     'a cohort&rsquo;s revenue has landed &mdash; a quarter still waiting on a month is '+
     'flagged <span style="color:#B96C15">in amber underneath</span> &middot; click any bar '+
