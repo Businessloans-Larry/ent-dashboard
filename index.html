@@ -270,6 +270,8 @@ code{font-family:var(--mono);font-size:12px;background:var(--bg);padding:1px 5px
 .chart .hmatv{fill:#B96C15}
 .chart .hsep{stroke:#E4E9F2;stroke-width:1}
 .chart .yrlab{fill:#1A2763;font-size:16px;font-weight:800;letter-spacing:.02em}
+.chart .yrrpl{fill:#1A2763;font-size:13px;font-weight:700}
+.chart .yrrpll{fill:#6B7593;font-size:11px;font-weight:600}
 .chart .yrdiv{stroke:#D6DEEA;stroke-width:1}
 .sel{font:500 13px Inter,sans-serif;color:var(--dark-navy);background:#fff;border:1px solid #D6DEEA;border-radius:6px;padding:5px 9px}
 .lu-h{display:flex;align-items:baseline;gap:10px;margin:18px 0 8px}
@@ -329,7 +331,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Oct 9, 2026 10:55 AM</span>
+      <span id="policy">data as of Oct 9, 2026 11:28 AM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -1944,6 +1946,19 @@ function drawQuarterBars(){
             held: cm.filter(m=>!isMature(m))};
   };
   const INTC=v=>Math.round(v).toLocaleString(), DOL=v=>'$'+Math.round(v).toLocaleString();
+  // Whole-year revenue per lead, on exactly the rule the quarter figure uses:
+  // revenue pooled over leads pooled across that year's complete AND matured
+  // months. Averaging the four quarter rates would weight a light quarter the
+  // same as a heavy one.
+  const yrRpl=y=>{
+    const cm=ms.filter(m=>m.slice(0,4)===y && DONE.has(m));
+    const rm=cm.filter(isMature);
+    if(!rm.length) return null;
+    const rv=rm.reduce((a,m)=>a+((MET[m]||{}).total_revenue||0),0);
+    const ld=rm.reduce((a,m)=>a+((MET[m]||{}).direct_leads||0),0);
+    return ld ? {v:rv/ld, n:rm.length, rev:rv, leads:ld,
+                 held:cm.filter(m=>!isMature(m))} : null;
+  };
   const ROWS=[['Avg rev','rev',money],['Leads','leads',INTC],['Signed','signed',INTC],
               ['Approvals','appr',INTC],['Rev / lead','rpl',DOL]];
   const RY=[44,62,80,98,116];
@@ -1952,6 +1967,35 @@ function drawQuarterBars(){
     const y0=TOP+yi*PH, T=y0+162, base=T+ih;
     if(yi) svg.appendChild(sv('line',{class:'yrdiv',x1:0,x2:W,y1:y0-14,y2:y0-14}));
     const g0=sv('text',{class:'yrlab',x:2,y:y0+18}); g0.textContent=yr; svg.appendChild(g0);
+    // the year's own revenue per lead, sitting with the year number
+    const YR=yrRpl(yr), YP=yrRpl(String(+yr-1));
+    if(YR){
+      const t=sv('text',{class:'yrrpl',x:56,y:y0+18});
+      const lb=sv('tspan'); lb.setAttribute('class','yrrpll');
+      lb.textContent='Avg rev / lead  '; t.appendChild(lb);
+      const vv=sv('tspan'); vv.textContent=DOL(YR.v);
+      if(YR.held.length) vv.setAttribute('class','hmatv');
+      t.appendChild(vv);
+      if(YP){
+        const up=YR.v>=YP.v;
+        const ar=sv('tspan'); ar.setAttribute('class','hly');
+        ar.setAttribute('fill',up?'#00A855':'#D14343');
+        ar.textContent='  '+(up?'▲':'▼'); t.appendChild(ar);
+        const lv=sv('tspan'); lv.setAttribute('class','hly');
+        lv.textContent=' '+DOL(YP.v); t.appendChild(lv);
+      }
+      let tip='<b>'+yr+' &middot; revenue per lead</b><br>'+MONEY0(YR.rev)+' over '+
+        INTC(YR.leads)+' leads<br>'+YR.n+(YR.n===1?' month':' months')+' counted';
+      if(YR.held.length){
+        const nm=YR.held.map(m=>MN[+m.slice(5,7)-1]).join(' & ');
+        const f=sv('tspan'); f.setAttribute('class','hmat');
+        f.textContent='   '+nm+' still maturing'; t.appendChild(f);
+        tip+='<br>'+nm+' held back &mdash; not yet 30 days past close';
+      }
+      if(YP) tip+='<br>'+(+yr-1)+': '+DOL(YP.v);
+      hover(t,tip);
+      svg.appendChild(t);
+    }
     ROWS.forEach(([lab],r)=>{
       const t=sv('text',{class:'hlab',x:L-7,y:y0+RY[r],'text-anchor':'end'});
       t.textContent=lab; svg.appendChild(t);
@@ -2072,7 +2116,9 @@ function drawQuarterBars(){
     'the same month sits in the same column &middot; numbers under each bar are deal counts '+
     '&middot; brackets carry the quarter total, and the figures above each quarter are per '+
     'completed month &middot; <span style="color:#B96C15">- - -</span> marks the revenue '+
-    'average &middot; revenue per lead counts only months 30+ days past close, where ~95% of '+
+    'average &middot; the figure beside each year is that whole year&rsquo;s revenue per lead, '+
+    'pooled rather than averaged across its quarters &middot; '+
+    'revenue per lead counts only months 30+ days past close, where ~95% of '+
     'a cohort&rsquo;s revenue has landed &mdash; a quarter still waiting on a month is '+
     'flagged <span style="color:#B96C15">in amber underneath</span> &middot; click any bar '+
     'or quarter for the deals';
