@@ -331,7 +331,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Oct 9, 2026 12:25 PM</span>
+      <span id="policy">data as of Oct 13, 2026 2:36 PM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -3034,16 +3034,23 @@ function renderSourceFunnel(){
   hr.appendChild(el('th','total','Total'));
   thead.appendChild(hr); t.appendChild(thead);
 
-  const S=k=>months.reduce((a,m)=>a+(srcBucket(m,key)?.[k]||0),0);
   const R=(a,b)=>b?a/b*100:null;
-  const totals={leads:S('leads'),qualified:S('qualified'),submitted:S('submitted'),
-    approved:S('approved'),funded:S('funded'),funded_amount:S('funded_amount'),
-    revenue:S('revenue')};
-  totals.sub=R(totals.submitted,totals.qualified);
-  totals.appr=R(totals.approved,totals.submitted);
-  totals.book=R(totals.funded,totals.approved);
-  totals.sq=R(totals.funded,totals.qualified);
-  totals.avg=totals.funded?totals.funded_amount/totals.funded:null;
+  // One value function for every scale, so a month cell, a quarter subtotal and
+  // the Total column cannot drift apart. Ratios recompute from their components
+  // over the months in scope rather than averaging the monthly rates.
+  const srcVal=(k,mset)=>{
+    if(!mset.some(m=>srcBucket(m,key))) return null;
+    const Q=f=>mset.reduce((a,m)=>a+(srcBucket(m,key)?.[f]||0),0);
+    if(k==='sub')  return R(Q('submitted'),Q('qualified'));
+    if(k==='appr') return R(Q('approved'),Q('submitted'));
+    if(k==='book') return R(Q('funded'),Q('approved'));
+    if(k==='sq')   return R(Q('funded'),Q('qualified'));
+    if(k==='avg')  return Q('funded')?Q('funded_amount')/Q('funded'):null;
+    return Q(k);
+  };
+  const SM={leads:'leads',qualified:'qualified',submitted:'submitted',
+    sub:'submitted',approved:'approved',appr:'approved',funded:'funded',
+    book:'funded',sq:'funded',funded_amount:'funded',revenue:'funded',avg:'funded'};
 
   const tb=el('tbody');
   SRC_ROWS.forEach(([k,lab,fmt,rule])=>{
@@ -3056,36 +3063,32 @@ function renderSourceFunnel(){
          value:key,months:months,basis:'created'});
     }
     tr.appendChild(sl);
-    months.forEach(m=>{
-      const b=srcBucket(m,key);
-      let v=null;
-      if(b){
-        if(k==='sub') v=R(b.submitted,b.qualified);
-        else if(k==='appr') v=R(b.approved,b.submitted);
-        else if(k==='book') v=R(b.funded,b.approved);
-        else if(k==='sq') v=R(b.funded,b.qualified);
-        else if(k==='avg') v=b.funded?b.funded_amount/b.funded:null;
-        else v=b[k];
-      }
-      const td=el('td','num'+(m===cm?' cur':''));
+    const cell=(v,cls,when,ms2)=>{
+      const td=el('td',cls);
       const str=(v==null)?null:fmt(v);
       td.textContent = str===null ? '—' : str;
-      if(str===null) td.className='num na'+(m===cm?' cur':'');
-      const SM={leads:'leads',qualified:'qualified',submitted:'submitted',
-        sub:'submitted',approved:'approved',appr:'approved',funded:'funded',
-        book:'funded',sq:'funded',funded_amount:'funded',revenue:'funded',avg:'funded'};
+      if(str===null) td.className=cls+' na';
       if(v!=null && key!=='All sources'){
         td.classList.add('clickable');
-        td.onclick=()=>openDrill(SRC_PICK+' — '+lab+' — '+label(m),
+        td.onclick=()=>openDrill(SRC_PICK+' — '+lab+' — '+when,
           {field:(DATA.channel_funnel.order.includes(key)?'ch':'pt'),value:key,
-           months:[m],basis:'created',metric:SM[k]||'leads'});
+           months:ms2,basis:'created',metric:SM[k]||'leads'});
       }
-      tr.appendChild(td);
+      return td;
+    };
+    months.forEach(m=>{
+      tr.appendChild(cell(srcVal(k,[m]),'num'+(m===cm?' cur':''),label(m),[m]));
+      // The header draws a subtotal column after every full quarter. Without a
+      // matching cell here each row shifted one column left per quarter, which
+      // put the Total under the last month and left the quarters blank.
+      if(qEnd[m]){
+        const qm=qMonths[qEnd[m]];
+        const qtd=cell(srcVal(k,qm),'num q',qEnd[m],qm);
+        qtd.title=qEnd[m]+' · '+lab;
+        tr.appendChild(qtd);
+      }
     });
-    const td=el('td','num total');
-    const str=totals[k]==null?null:fmt(totals[k]);
-    td.textContent = str===null ? '—' : str;
-    tr.appendChild(td);
+    tr.appendChild(cell(srcVal(k,months),'num total','the selected range',months));
     tb.appendChild(tr);
   });
   t.appendChild(tb);
