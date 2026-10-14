@@ -331,7 +331,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Oct 14, 2026 3:00 PM</span>
+      <span id="policy">data as of Oct 14, 2026 4:02 PM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -2264,11 +2264,12 @@ function drawPie(svgId,keyId,key,topN,months,minUnits,opts){
   const svg=document.getElementById(svgId), box=document.getElementById(keyId);
   if(!svg||!box) return;
   const ORD=opts&&opts.order, MET=(opts&&opts.metric)||'amount';
+  const OMIT=new Set((opts&&opts.omit)||[]);
   const VAL=v=>MET==='units'?INT(v.units)+(v.units===1?' deal':' deals'):MONEY0(v.amount);
   const ALT=v=>MET==='units'?MONEY0(v.amount):INT(v.units)+' deals';
   svg.innerHTML=''; box.innerHTML='';
   const agg=mixAgg(key,months);
-  let rows=Object.entries(agg);
+  let rows=Object.entries(agg).filter(r=>!OMIT.has(r[0]));
   rows.sort(ORD ? (a,b)=>{
     const ia=ORD.indexOf(a[0]), ib=ORD.indexOf(b[0]);
     return (ia<0?99:ia)-(ib<0?99:ib) || b[1][MET]-a[1][MET];
@@ -2338,18 +2339,24 @@ function drawPie(svgId,keyId,key,topN,months,minUnits,opts){
 
 // Where we sat on the stack. Zoho's Position field, normalised in build.py.
 let POS_METRIC='units';
+// Deals with no position are left out entirely: they are lines of credit,
+// where the field is never filled because the question doesn't apply
+// (Larry, 10/14). Verified at the time - 27 of the 29 blanks were LOC and the
+// other two a 2024 ERC pair.
+const POS_OMIT=['Not recorded'];
 function renderPosition(){
-  const ORD=DATA.mix.positions||[];
+  const ORD=(DATA.mix.positions||[]).filter(p=>POS_OMIT.indexOf(p)<0);
   drawPie('pie-position','key-position','position',0,null,0,
-          {order:ORD, metric:POS_METRIC});
+          {order:ORD, metric:POS_METRIC, omit:POS_OMIT});
   const agg=mixAgg('position');
-  const u=Object.values(agg).reduce((a,v)=>a+v.units,0);
-  const blank=(agg['Not recorded']||{}).units||0;
+  const blank=POS_OMIT.reduce((a,p)=>a+((agg[p]||{}).units||0),0);
+  const u=Object.entries(agg).reduce((a,[k,v])=>
+    a+(POS_OMIT.indexOf(k)<0?v.units:0),0);
   const n=document.getElementById('pos-note');
   if(n) n.textContent='Where we sat on the stack · by funded date · follows the range '+
     'above · '+INT(u)+' funded deal'+(u===1?'':'s')+
-    (blank?' · '+INT(blank)+' have no position recorded in Zoho ('+
-      (u?(blank/u*100).toFixed(0):0)+'%)':'');
+    (blank?' · '+INT(blank)+' line'+(blank===1?'':'s')+
+      ' of credit with no position set excluded':'');
   const box=document.getElementById('pos-metric');
   if(box){
     box.innerHTML='';
@@ -2365,7 +2372,8 @@ function renderPosition(){
 function posLenderTable(){
   const t=document.getElementById('pos-lender'); if(!t) return;
   const M=DATA.mix.months, ORD=DATA.mix.positions||[];
-  const cols=ORD.filter(p=>MIX_RANGE.some(m=>M[m]&&M[m].position&&M[m].position[p]));
+  const cols=ORD.filter(p=>POS_OMIT.indexOf(p)<0 &&
+    MIX_RANGE.some(m=>M[m]&&M[m].position&&M[m].position[p]));
   t.innerHTML='';
   // mix.months carries each dimension on its own, so the lender x position
   // crossing has to be counted off the deal index
