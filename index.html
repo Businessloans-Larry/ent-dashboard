@@ -331,7 +331,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Oct 13, 2026 2:36 PM</span>
+      <span id="policy">data as of Oct 14, 2026 3:00 PM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -496,6 +496,22 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
     <section><h2>By Industry</h2><p class="note">Funded volume &amp; deal count</p>
       <div class="pie-wrap"><svg class="pie" id="pie-industry"></svg>
         <div class="pie-key" id="key-industry"></div></div></section>
+  </div>
+  <div class="grid grid-2">
+    <section>
+      <div class="sec-head">
+        <div>
+          <h2>By Position</h2>
+          <p class="note" id="pos-note">Where we sat on the stack &middot; follows the range above</p>
+        </div>
+        <div class="chips" id="pos-metric"></div>
+      </div>
+      <div class="pie-wrap"><svg class="pie" id="pie-position"></svg>
+        <div class="pie-key" id="key-position"></div></div>
+    </section>
+    <section><h2>Position by Lender</h2>
+      <p class="note">Deal count &middot; who takes which slot &middot; click a cell for the deals</p>
+      <div class="scroll"><table id="pos-lender"></table></div></section>
   </div>
   <section>
     <div class="sec-head">
@@ -1656,6 +1672,7 @@ function filterDeals(all, spec){
     if(spec.field && r[spec.field]!==spec.value) return false;
     if(!pred(r)) return false;
     if(spec.extraBand && r.bd!==spec.extraBand) return false;
+    if(spec.extraPos && r.ps!==spec.extraPos) return false;
     if(spec.sday && r.sday!==spec.sday) return false;
     if(spec.lreason && (r.lr||'Not recorded')!==spec.lreason) return false;
     if(spec.ureason && (r.ur||'Not recorded')!==spec.ureason) return false;
@@ -1685,6 +1702,7 @@ async function getDeals(spec){
     p.set('basis',spec.basis||'funded');
     if(spec.metric) p.set('metric',spec.metric);
     if(spec.extraBand) p.set('band',spec.extraBand);
+    if(spec.extraPos) p.set('pos',spec.extraPos);
     if(spec.sday) p.set('sday',spec.sday);
     if(spec.lreason) p.set('lreason',spec.lreason);
     if(spec.ureason) p.set('ureason',spec.ureason);
@@ -2238,14 +2256,24 @@ const PIE_COLORS=['#002F68','#00CDEF','#00CD67','#FFC858','#60AFF0','#FB5038',
   '#7C6BB5','#1FA9A0','#E08A3C','#D4508F','#5B8C3A','#8A6240','#4B5C7A',
   '#C0459B','#2E7D8C','#9BB1D4','#B0BAC9'];
 
-const MIX_FIELD={lender:'ld',industry:'in',band:'bd',type:'ty',state:'st'};
-function drawPie(svgId,keyId,key,topN,months,minUnits){
+const MIX_FIELD={lender:'ld',industry:'in',band:'bd',type:'ty',state:'st',
+                 position:'ps'};
+// opts: {order:[...]} fixes the slice order instead of sorting by size, and
+// {metric:'units'} sizes the pie by deal count rather than dollars.
+function drawPie(svgId,keyId,key,topN,months,minUnits,opts){
   const svg=document.getElementById(svgId), box=document.getElementById(keyId);
   if(!svg||!box) return;
+  const ORD=opts&&opts.order, MET=(opts&&opts.metric)||'amount';
+  const VAL=v=>MET==='units'?INT(v.units)+(v.units===1?' deal':' deals'):MONEY0(v.amount);
+  const ALT=v=>MET==='units'?MONEY0(v.amount):INT(v.units)+' deals';
   svg.innerHTML=''; box.innerHTML='';
   const agg=mixAgg(key,months);
-  let rows=Object.entries(agg).sort((a,b)=>b[1].amount-a[1].amount);
-  const total=rows.reduce((a,r)=>a+r[1].amount,0);
+  let rows=Object.entries(agg);
+  rows.sort(ORD ? (a,b)=>{
+    const ia=ORD.indexOf(a[0]), ib=ORD.indexOf(b[0]);
+    return (ia<0?99:ia)-(ib<0?99:ib) || b[1][MET]-a[1][MET];
+  } : (a,b)=>b[1][MET]-a[1][MET]);
+  const total=rows.reduce((a,r)=>a+r[1][MET],0);
   // Keep the pie readable. Two ways to cut it: the top N slices, or - when
   // minUnits is given - every name that closed at least that many deals.
   // Whatever is left over folds into one "+N smaller" slice.
@@ -2264,7 +2292,7 @@ function drawPie(svgId,keyId,key,topN,months,minUnits){
   if(!total){ box.appendChild(el('div','note','No funded deals in this range')); return; }
   let a0=-Math.PI/2;
   rows.forEach(([name,v],i)=>{
-    const frac=v.amount/total, a1=a0+frac*Math.PI*2;
+    const frac=v[MET]/total, a1=a0+frac*Math.PI*2;
     const col=PIE_COLORS[i%PIE_COLORS.length];
     const x0=C+R*Math.cos(a0), y0=C+R*Math.sin(a0);
     const x1=C+R*Math.cos(a1), y1=C+R*Math.sin(a1);
@@ -2275,7 +2303,7 @@ function drawPie(svgId,keyId,key,topN,months,minUnits){
       : sv('path',{d:`M${C},${C} L${x0},${y0} A${R},${R} 0 ${large},1 ${x1},${y1} Z`,fill:col});
     const t=sv('title');
     t.textContent=name+' — '+MONEY0(v.amount)+' · '+v.units+' deals · '+
-      (frac*100).toFixed(1)+'%';
+      (frac*100).toFixed(1)+'% of '+(MET==='units'?'deals':'dollars');
     node.appendChild(t); svg.appendChild(node);
     if(!name.startsWith('+')){
       node.style.cursor='pointer';
@@ -2286,8 +2314,8 @@ function drawPie(svgId,keyId,key,topN,months,minUnits){
     const row=el('div','pk');
     const sw=el('i'); sw.style.background=col; row.appendChild(sw);
     row.appendChild(el('div','pn',name));
-    row.appendChild(el('div','pv',MONEY0(v.amount)));
-    row.appendChild(el('div','pu',INT(v.units)+' deals · '+(frac*100).toFixed(0)+'%'));
+    row.appendChild(el('div','pv',VAL(v)));
+    row.appendChild(el('div','pu',ALT(v)+' · '+(frac*100).toFixed(0)+'%'));
     row.title=t.textContent+(v.inferred?'  ('+v.inferred+' inferred from company name)':'');
     if(!name.startsWith('+')){
       row.classList.add('clickable');
@@ -2301,9 +2329,105 @@ function drawPie(svgId,keyId,key,topN,months,minUnits){
   tot.style.marginTop='3px'; tot.style.paddingTop='3px';
   tot.appendChild(el('i'));
   const nm=el('div','pn','Total'); nm.style.fontWeight='700'; tot.appendChild(nm);
-  const vv=el('div','pv',MONEY0(total)); tot.appendChild(vv);
-  tot.appendChild(el('div','pu',INT(rows.reduce((a,r)=>a+r[1].units,0))+' deals'));
+  const sum={units:rows.reduce((a,r)=>a+r[1].units,0),
+             amount:rows.reduce((a,r)=>a+r[1].amount,0)};
+  tot.appendChild(el('div','pv',VAL(sum)));
+  tot.appendChild(el('div','pu',ALT(sum)));
   box.appendChild(tot);
+}
+
+// Where we sat on the stack. Zoho's Position field, normalised in build.py.
+let POS_METRIC='units';
+function renderPosition(){
+  const ORD=DATA.mix.positions||[];
+  drawPie('pie-position','key-position','position',0,null,0,
+          {order:ORD, metric:POS_METRIC});
+  const agg=mixAgg('position');
+  const u=Object.values(agg).reduce((a,v)=>a+v.units,0);
+  const blank=(agg['Not recorded']||{}).units||0;
+  const n=document.getElementById('pos-note');
+  if(n) n.textContent='Where we sat on the stack · by funded date · follows the range '+
+    'above · '+INT(u)+' funded deal'+(u===1?'':'s')+
+    (blank?' · '+INT(blank)+' have no position recorded in Zoho ('+
+      (u?(blank/u*100).toFixed(0):0)+'%)':'');
+  const box=document.getElementById('pos-metric');
+  if(box){
+    box.innerHTML='';
+    [['Deals','units'],['Funded $','amount']].forEach(([lab,v])=>{
+      const b=el('button','chip'+(POS_METRIC===v?' on':''),lab);
+      b.onclick=()=>{ POS_METRIC=v; renderPosition(); };
+      box.appendChild(b);
+    });
+  }
+  posLenderTable();
+}
+
+function posLenderTable(){
+  const t=document.getElementById('pos-lender'); if(!t) return;
+  const M=DATA.mix.months, ORD=DATA.mix.positions||[];
+  const cols=ORD.filter(p=>MIX_RANGE.some(m=>M[m]&&M[m].position&&M[m].position[p]));
+  t.innerHTML='';
+  // mix.months carries each dimension on its own, so the lender x position
+  // crossing has to be counted off the deal index
+  if(POS_X_KEY!==MIX_RANGE.join(',') || !POS_X){
+    t.innerHTML='<tbody><tr><td class="note">Loading…</td></tr></tbody>';
+    loadPosX(); return;
+  }
+  const agg=POS_X;
+  const tot=ld=>cols.reduce((a,p)=>a+(agg[ld][p]||0),0);
+  const lenders=Object.keys(agg).filter(ld=>tot(ld)).sort((a,b)=>tot(b)-tot(a));
+  const thead=el('thead'),hr=el('tr');
+  hr.appendChild(el('th','lbl','Lender'));
+  cols.forEach(p=>hr.appendChild(el('th',null,p.replace(' position',''))));
+  hr.appendChild(el('th','total','Total'));
+  thead.appendChild(hr); t.appendChild(thead);
+  const tb=el('tbody');
+  lenders.forEach(ld=>{
+    const tr=el('tr'); tr.appendChild(el('td','lbl',ld));
+    cols.forEach(p=>{
+      const n=agg[ld][p]||0;
+      const td=el('td','num'); td.textContent=n?INT(n):'–';
+      if(n){
+        td.classList.add('clickable');
+        td.title=ld+' · '+p+' — '+n+(n===1?' deal':' deals');
+        td.onclick=()=>openDrill(ld+' — '+p,
+          {field:'ld',value:ld,months:MIX_RANGE,basis:'funded',extraPos:p});
+      }
+      tr.appendChild(td);
+    });
+    const td=el('td','num total'); td.textContent=INT(tot(ld)); tr.appendChild(td);
+    tb.appendChild(tr);
+  });
+  const gr=el('tr','sum'); gr.appendChild(el('td','lbl','Total'));
+  let grand=0;
+  cols.forEach(p=>{
+    const n=lenders.reduce((a,ld)=>a+(agg[ld][p]||0),0); grand+=n;
+    const td=el('td','num total'); td.textContent=n?INT(n):'–'; gr.appendChild(td);
+  });
+  const gt=el('td','num total'); gt.textContent=INT(grand);
+  gr.appendChild(gt); tb.appendChild(gr); t.appendChild(tb);
+}
+
+let POS_X=null, POS_X_KEY=null, POS_X_BUSY=false;
+async function loadPosX(){
+  const k=MIX_RANGE.join(',');
+  if(POS_X_BUSY) return;
+  POS_X_BUSY=true;
+  try{
+    const res=await getDeals({months:MIX_RANGE,basis:'funded',metric:'funded',limit:5000});
+    const out={};
+    (res.rows||[]).forEach(r=>{
+      if(!r.ld||!r.ps) return;
+      const o=out[r.ld]||(out[r.ld]={});
+      o[r.ps]=(o[r.ps]||0)+1;
+    });
+    POS_X=out; POS_X_KEY=k;
+    posLenderTable();
+  }catch(e){
+    const t=document.getElementById('pos-lender');
+    if(t) t.innerHTML='<tbody><tr><td class="note err">Could not load: '+
+      e.message+'</td></tr></tbody>';
+  }finally{ POS_X_BUSY=false; }
 }
 
 function periodsFor(){
@@ -2659,6 +2783,7 @@ function renderMix(){
   drawPie('pie-lender','key-lender','lender',9);
   renderLenderPeriods();
   drawPie('pie-industry','key-industry','industry',8);
+  renderPosition();
   bandTable();
   lenderBandTable();
   renderSigningProfile();
