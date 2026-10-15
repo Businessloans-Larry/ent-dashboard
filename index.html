@@ -331,7 +331,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Oct 14, 2026 4:02 PM</span>
+      <span id="policy">data as of Oct 15, 2026 12:59 PM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -866,6 +866,7 @@ const PNL_ROWS=[
   ['sdr_salary','SDR Salary','ind',MONEY0],
   ['sdr_commissions','SDR Commissions','ind',MONEY0],
   ['sdr_benefits','SDR Benefits','ind',MONEY0],
+  ['offshore_sdr','Offshore SDR','ind',MONEY0],
   ['total_salary','Total Salary Costs','sum',MONEY0],
   ['total_commissions','Total Sales Commissions','sum',MONEY0],
   ['total_benefits','Total Benefits','sum',MONEY0],
@@ -883,7 +884,7 @@ const ROLLUP={total_salary:['team_lead_salary','ae_salary','sdr_salary'],
   total_commissions:['team_lead_commissions','ae_commissions','sdr_commissions'],
   total_benefits:['team_lead_benefits','ae_benefits','sdr_benefits'],
   total_sales_cost:['team_lead_salary','team_lead_commissions','ae_salary',
-    'ae_commissions','sdr_salary','sdr_commissions'],
+    'ae_commissions','sdr_salary','sdr_commissions','offshore_sdr'],
   contribution_margin:['marketplace_opportunity_cost'],
   margin_pct:['marketplace_opportunity_cost']};
 
@@ -3372,7 +3373,7 @@ function renderPnl(){
   ['revenue','bonus_revenue','marketplace_opportunity_cost',
    'affiliate_payout','team_lead_salary','team_lead_commissions','team_lead_benefits',
    'ae_salary','ae_commissions','ae_benefits','sdr_salary','sdr_commissions',
-   'sdr_benefits','total_salary','total_commissions','total_benefits',
+   'sdr_benefits','offshore_sdr','total_salary','total_commissions','total_benefits',
    'total_sales_cost','contribution_margin'].forEach(k=>T[k]=S(k));
   T.margin_pct   = T.revenue? T.contribution_margin/T.revenue*100 : null;
   T.tl_comm_pct  = T.revenue? T.team_lead_commissions/T.revenue*100 : null;
