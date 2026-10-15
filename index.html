@@ -331,7 +331,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Oct 15, 2026 1:00 PM</span>
+      <span id="policy">data as of Oct 15, 2026 1:06 PM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -851,31 +851,35 @@ const GROUPS = [
   ]],
 ];
 
+// Row for row, in the order Larry's own Enterprise P&L sheet runs, because
+// this tab is what management reads and the two have to agree (10/15/26).
 const PNL_ROWS=[
-  ['revenue','Revenue','sum',MONEY0],
-  [null,'','spacer',null],
+  ['revenue','Revenue','ind',MONEY0],
+  ['bonus_revenue','Bonus Revenue','ind',MONEY0],
+  ['total_revenue','Total Revenue','sum',MONEY0],
   ['marketplace_opportunity_cost','Marketplace Opportunity Cost','ind',MONEY0],
   ['affiliate_payout','Affiliate Payout','ind',MONEY0],
-  [null,'Lead Cost','grp',null],
-  ['team_lead_salary','Team Lead Salary','ind',MONEY0],
-  ['team_lead_commissions','Team Lead Commissions','ind',MONEY0],
-  ['team_lead_benefits','Team Lead Benefits','ind',MONEY0],
+  ['gross_margin','Gross Margin','sum',MONEY0],
+  ['team_lead_salary','Management Salary','ind',MONEY0],
   ['ae_salary','Account Executive Salary','ind',MONEY0],
-  ['ae_commissions','Account Executive Commissions','ind',MONEY0],
-  ['ae_benefits','Account Executive Benefits','ind',MONEY0],
   ['sdr_salary','SDR Salary','ind',MONEY0],
+  ['total_salary','Salary Subtotal','sum',MONEY0],
+  ['team_lead_commissions','Management Commission','ind',MONEY0],
+  ['ae_commissions','Account Executive Commissions','ind',MONEY0],
   ['sdr_commissions','SDR Commissions','ind',MONEY0],
-  ['sdr_benefits','SDR Benefits','ind',MONEY0],
+  ['total_commissions','Commission Subtotal','sum',MONEY0],
+  ['team_lead_benefits','Management ER Burden','ind',MONEY0],
+  ['ae_benefits','Account Executive ER Burden','ind',MONEY0],
+  ['sdr_benefits','SDR ER Burden','ind',MONEY0],
+  ['total_benefits','ER Burden Subtotal','sum',MONEY0],
+  [null,'Operations & Support','grp',null],
   ['offshore_sdr','Offshore SDR','ind',MONEY0],
-  ['total_salary','Total Salary Costs','sum',MONEY0],
-  ['total_commissions','Total Sales Commissions','sum',MONEY0],
-  ['total_benefits','Total Benefits','sum',MONEY0],
   ['total_sales_cost','Total Sales Cost','sum',MONEY0],
   [null,'','spacer',null],
-  ['contribution_margin','Contribution Margin','cm',MONEY0],
+  ['contribution_margin','Team Margin','cm',MONEY0],
   ['margin_pct','Margin %','sum',PCT1],
-  ['tl_comm_pct','Team Lead Commissions / Revenue','ind',PCT2],
-  ['ae_comm_pct','AE Commissions / Revenue','ind',PCT2],
+  ['tl_comm_pct','Mgt Commissions / C Revenue','ind',PCT2],
+  ['ae_comm_pct','AE Commissions / C Revenue','ind',PCT2],
 ];
 // a benefits line is only as solid as the salary/commission behind it
 const BENEFIT_SRC={team_lead_benefits:['team_lead_salary','team_lead_commissions'],
@@ -885,8 +889,10 @@ const ROLLUP={total_salary:['team_lead_salary','ae_salary','sdr_salary'],
   total_benefits:['team_lead_benefits','ae_benefits','sdr_benefits'],
   total_sales_cost:['team_lead_salary','team_lead_commissions','ae_salary',
     'ae_commissions','sdr_salary','sdr_commissions','offshore_sdr'],
-  contribution_margin:['marketplace_opportunity_cost'],
-  margin_pct:['marketplace_opportunity_cost']};
+  total_revenue:['revenue','bonus_revenue'],
+  gross_margin:['marketplace_opportunity_cost','bonus_revenue'],
+  contribution_margin:['marketplace_opportunity_cost','bonus_revenue'],
+  margin_pct:['marketplace_opportunity_cost','bonus_revenue']};
 
 // [key, label, formatter, isRate]
 const PROD_KEYS=[
@@ -3370,12 +3376,15 @@ function renderPnl(){
   // range totals: sum the additive lines, recompute the ratios
   const S=k=>totalMonths.reduce((a,m)=>a+(P.months[m]?.[k]||0),0);
   const T={};
-  ['revenue','bonus_revenue','marketplace_opportunity_cost',
+  ['revenue','bonus_revenue','total_revenue','gross_margin',
+   'marketplace_opportunity_cost',
    'affiliate_payout','team_lead_salary','team_lead_commissions','team_lead_benefits',
    'ae_salary','ae_commissions','ae_benefits','sdr_salary','sdr_commissions',
    'sdr_benefits','offshore_sdr','total_salary','total_commissions','total_benefits',
    'total_sales_cost','contribution_margin'].forEach(k=>T[k]=S(k));
-  T.margin_pct   = T.revenue? T.contribution_margin/T.revenue*100 : null;
+  // Margin % runs off TOTAL revenue (bonus included) like the sheet does; the
+  // two commission ratios stay on base revenue, which is also what it does.
+  T.margin_pct   = T.total_revenue? T.contribution_margin/T.total_revenue*100 : null;
   T.tl_comm_pct  = T.revenue? T.team_lead_commissions/T.revenue*100 : null;
   T.ae_comm_pct  = T.revenue? T.ae_commissions/T.revenue*100 : null;
 
