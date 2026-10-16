@@ -331,7 +331,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Oct 16, 2026 8:52 AM</span>
+      <span id="policy">data as of Oct 16, 2026 8:59 AM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -855,7 +855,6 @@ const GROUPS = [
 // this tab is what management reads and the two have to agree (10/15/26).
 const PNL_ROWS=[
   ['revenue','Revenue','ind',MONEY0],
-  ['bonus_revenue','Bonus Revenue','ind',MONEY0],
   ['total_revenue','Total Revenue','sum',MONEY0],
   ['marketplace_opportunity_cost','Marketplace Opportunity Cost','ind',MONEY0],
   ['affiliate_payout','Affiliate Payout','ind',MONEY0],
@@ -889,10 +888,9 @@ const ROLLUP={total_salary:['team_lead_salary','ae_salary','sdr_salary'],
   total_benefits:['team_lead_benefits','ae_benefits','sdr_benefits'],
   total_sales_cost:['team_lead_salary','team_lead_commissions','ae_salary',
     'ae_commissions','sdr_salary','sdr_commissions','offshore_sdr'],
-  total_revenue:['revenue','bonus_revenue'],
-  gross_margin:['marketplace_opportunity_cost','bonus_revenue'],
-  contribution_margin:['marketplace_opportunity_cost','bonus_revenue'],
-  margin_pct:['marketplace_opportunity_cost','bonus_revenue']};
+  gross_margin:['marketplace_opportunity_cost'],
+  contribution_margin:['marketplace_opportunity_cost'],
+  margin_pct:['marketplace_opportunity_cost']};
 
 // [key, label, formatter, isRate]
 const PROD_KEYS=[
