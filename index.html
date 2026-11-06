@@ -369,7 +369,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Nov 6, 2026 11:57 AM</span>
+      <span id="policy">data as of Nov 6, 2026 11:59 AM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -3345,10 +3345,13 @@ function renderOtherBar(){
   bar.innerHTML='';
   const c=el('div');
   c.appendChild(el('div','ob-k',
-    'ENT deals funded by others · '+o.year+' YTD'));
+    'ENT new business funded by others · '+o.year+' YTD'));
   c.appendChild(el('div','ob-v',
-    MONEY0(o.revenue)+'  ·  '+o.units+' deals'));
-  c.appendChild(el('div','ob-sub', MONEY0(o.funded_amount)+' originated'));
+    MONEY0(o.revenue)+'  ·  '+o.units+' deal'+(o.units===1?'':'s')));
+  c.appendChild(el('div','ob-sub',
+    MONEY0(o.funded_amount)+' originated · Direct Sales pipeline'+
+    (o.excluded_units ? '  (excludes '+o.excluded_units+' renewals, '+
+      MONEY0(o.excluded_revenue)+')' : '')));
   bar.appendChild(c);
   bar.appendChild(el('div','ob-go','View deals ›'));
   bar.style.display='flex';
@@ -3357,8 +3360,11 @@ function renderOtherBar(){
 let OTHER_SORT={k:'fd',dir:-1};
 function openOther(){
   const o=DATA.ent_other; if(!o||!o.deals) return;
+  document.getElementById('ovltitle').textContent=
+    'Enterprise new business funded by others';
   document.getElementById('ovlsub').textContent=
-    o.year+' YTD · '+o.units+' deals · '+MONEY0(o.revenue)+' revenue';
+    o.year+' YTD · Direct Sales · '+o.units+' deal'+(o.units===1?'':'s')+
+    ' · '+MONEY0(o.revenue)+' revenue';
   drawOtherTable();
   document.getElementById('otherovl').classList.add('on');
 }
