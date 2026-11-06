@@ -147,6 +147,21 @@ tr.grp td{background:var(--navy) !important;color:#fff;font:600 11px Inter,sans-
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
 .grid.grid-2{grid-template-columns:1fr 1fr}
 @media(max-width:1100px){.grid,.grid.grid-2{grid-template-columns:1fr}}
+/* Enterprise-tag revenue funded by other reps. Sits under the header on every
+   tab. Styled as a slim read-out rather than a tile - it is context, not one of
+   Larry's own numbers (11/6/26). */
+.otherbar{display:none;align-items:center;gap:14px;flex-wrap:wrap;
+  background:#fff;border:1px solid var(--line);border-left:3px solid var(--gold);
+  border-radius:8px;padding:8px 14px;margin:8px 0 0}
+.otherbar .ob-k{font-size:9px;color:var(--slate);text-transform:uppercase;
+  letter-spacing:.06em;font-weight:700}
+.otherbar .ob-v{font-family:"DM Serif Display",Georgia,serif;font-size:19px;
+  color:var(--navy);line-height:1.1}
+.otherbar .ob-sub{font-size:10.5px;color:var(--slate);margin-top:1px}
+.otherbar .ob-sep{width:1px;align-self:stretch;background:var(--line);margin:0 2px}
+.otherbar .ob-who{font-size:10.5px;color:var(--slate);margin-left:auto;
+  text-align:right;line-height:1.4}
+.otherbar .ob-who b{color:var(--navy);font-weight:600}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
 .tiles.strip{grid-template-columns:repeat(10,minmax(0,1fr))}
 .tiles.strip.six{grid-template-columns:repeat(6,minmax(0,1fr))}
@@ -331,7 +346,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Oct 30, 2026 2:38 PM</span>
+      <span id="policy">data as of Nov 6, 2026 11:01 AM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -344,6 +359,8 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
     
   </div>
 </header>
+
+<div class="otherbar" id="otherbar"></div>
 
 <div id="view-funnel">
 <section>
@@ -3283,6 +3300,45 @@ function renderProdStrips(){
   });
 }
 
+/* ---------- Enterprise tag revenue funded by other reps ------------------ */
+/* Independent of the range picker on purpose: this is a fixed year-to-date
+   read-out, and the rows behind it are Renewal Business fundings that have no
+   lead-created date in this funnel to filter on. */
+function renderOtherBar(){
+  const bar=document.getElementById('otherbar'); if(!bar) return;
+  const o=DATA.ent_other;
+  if(!o || !o.units){ bar.style.display='none'; return; }
+  bar.innerHTML='';
+  const mine=Object.entries(DATA.production||{})
+    .filter(([m])=>m.startsWith(o.year))
+    .reduce((a,[,p])=>a+(p.new_revenue||0),0);
+
+  const cell=(k,v,sub)=>{
+    const d=el('div');
+    d.appendChild(el('div','ob-k',k));
+    d.appendChild(el('div','ob-v',v));
+    if(sub) d.appendChild(el('div','ob-sub',sub));
+    return d;
+  };
+  bar.appendChild(cell(o.year+' Enterprise tag · funded by others',
+    MONEY0(o.revenue),
+    o.units+' deals · '+MONEY0(o.funded_amount)+' originated'));
+  bar.appendChild(el('div','ob-sep'));
+  bar.appendChild(cell('Your '+o.year+' revenue', MONEY0(mine),
+    'funded on your own deals'));
+  bar.appendChild(el('div','ob-sep'));
+  bar.appendChild(cell('Total on the Enterprise tag', MONEY0(mine+o.revenue),
+    (mine? Math.round(o.revenue/(mine+o.revenue)*100):0)+'% of it funded by others'));
+
+  const who=el('div','ob-who');
+  const top=Object.entries(o.by_owner||{}).slice(0,3)
+    .map(([n,v])=>n+' '+MONEY0(v.revenue));
+  who.innerHTML='Mostly renewals of merchants you sourced.'+
+    (top.length? '<br>Top: <b>'+top.join('</b> · <b>')+'</b>' : '');
+  bar.appendChild(who);
+  bar.style.display='flex';
+}
+
 /* ---------- goals -------------------------------------------------------- */
 function renderGoals(){
   const g=document.getElementById('goals'); g.innerHTML='';
@@ -3634,7 +3690,7 @@ function render(){
   renderYTD(); renderPacing(); renderProdStrips(); renderGoals(); renderFunnel(); renderSourceFunnel(); renderProd();
   buildPnlControls(); renderPnl();
   buildMixControls(); renderMix();
-  renderDaily(); renderQuarters(); drawQuarterBars(); stamp();
+  renderDaily(); renderQuarters(); drawQuarterBars(); renderOtherBar(); stamp();
 }
 
 // The server decides whether to actually re-pull Zoho: opening the page checks
