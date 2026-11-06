@@ -150,18 +150,41 @@ tr.grp td{background:var(--navy) !important;color:#fff;font:600 11px Inter,sans-
 /* Enterprise-tag revenue funded by other reps. Sits under the header on every
    tab. Styled as a slim read-out rather than a tile - it is context, not one of
    Larry's own numbers (11/6/26). */
-.otherbar{display:none;align-items:center;gap:14px;flex-wrap:wrap;
+.otherbar{display:none;align-items:center;gap:12px;
   background:#fff;border:1px solid var(--line);border-left:3px solid var(--gold);
-  border-radius:8px;padding:8px 14px;margin:8px 0 0}
+  border-radius:8px;padding:9px 14px;margin:8px 0 0;cursor:pointer;
+  transition:background .12s,border-color .12s}
+.otherbar:hover{background:#FFFCF4;border-color:var(--gold)}
 .otherbar .ob-k{font-size:9px;color:var(--slate);text-transform:uppercase;
   letter-spacing:.06em;font-weight:700}
 .otherbar .ob-v{font-family:"DM Serif Display",Georgia,serif;font-size:19px;
   color:var(--navy);line-height:1.1}
 .otherbar .ob-sub{font-size:10.5px;color:var(--slate);margin-top:1px}
-.otherbar .ob-sep{width:1px;align-self:stretch;background:var(--line);margin:0 2px}
-.otherbar .ob-who{font-size:10.5px;color:var(--slate);margin-left:auto;
-  text-align:right;line-height:1.4}
-.otherbar .ob-who b{color:var(--navy);font-weight:600}
+.otherbar .ob-go{margin-left:auto;font-size:11px;color:var(--navy);
+  font-weight:600;white-space:nowrap}
+/* click-through list of those deals */
+.ovl{display:none;position:fixed;inset:0;background:rgba(10,20,45,.45);z-index:90}
+.ovl.on{display:block}
+.ovlbox{position:absolute;top:4vh;left:50%;transform:translateX(-50%);
+  width:min(1180px,94vw);max-height:92vh;background:#fff;border-radius:10px;
+  display:flex;flex-direction:column;overflow:hidden}
+.ovlhd{background:var(--navy);color:#fff;padding:11px 16px;display:flex;
+  align-items:center;gap:14px}
+.ovlhd h3{margin:0;font-size:15px;font-weight:600}
+.ovlhd .x{margin-left:auto;background:none;border:1px solid rgba(255,255,255,.35);
+  color:#fff;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer}
+.ovlhd .x:hover{background:rgba(255,255,255,.14)}
+.ovlbody{overflow:auto;padding:0}
+.ovlbody table{width:100%;border-collapse:collapse;font-size:11.5px}
+.ovlbody th{position:sticky;top:0;background:var(--bg);color:var(--slate);
+  font-size:9px;text-transform:uppercase;letter-spacing:.05em;text-align:left;
+  padding:7px 10px;border-bottom:1px solid var(--line);white-space:nowrap;cursor:pointer}
+.ovlbody th:hover{color:var(--navy)}
+.ovlbody td{padding:6px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+.ovlbody td.num{text-align:right;font-family:var(--mono);font-size:10.5px}
+.ovlbody tbody tr:hover{background:#F9FAFD}
+.ovlbody tfoot td{padding:8px 10px;font-weight:700;color:var(--navy);
+  background:var(--bg);position:sticky;bottom:0}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
 .tiles.strip{grid-template-columns:repeat(10,minmax(0,1fr))}
 .tiles.strip.six{grid-template-columns:repeat(6,minmax(0,1fr))}
@@ -346,7 +369,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Nov 6, 2026 11:01 AM</span>
+      <span id="policy">data as of Nov 6, 2026 11:57 AM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -360,7 +383,18 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   </div>
 </header>
 
-<div class="otherbar" id="otherbar"></div>
+<div class="otherbar" id="otherbar" onclick="openOther()" title="Click to see the deals"></div>
+
+<div class="ovl" id="otherovl" onclick="if(event.target===this)closeOther()">
+  <div class="ovlbox">
+    <div class="ovlhd">
+      <h3 id="ovltitle">Enterprise deals funded by others</h3>
+      <span id="ovlsub" style="font-size:11.5px;color:#A9C4E6"></span>
+      <button class="x" onclick="closeOther()">Close</button>
+    </div>
+    <div class="ovlbody" id="ovlbody"></div>
+  </div>
+</div>
 
 <div id="view-funnel">
 <section>
@@ -3309,34 +3343,66 @@ function renderOtherBar(){
   const o=DATA.ent_other;
   if(!o || !o.units){ bar.style.display='none'; return; }
   bar.innerHTML='';
-  const mine=Object.entries(DATA.production||{})
-    .filter(([m])=>m.startsWith(o.year))
-    .reduce((a,[,p])=>a+(p.new_revenue||0),0);
-
-  const cell=(k,v,sub)=>{
-    const d=el('div');
-    d.appendChild(el('div','ob-k',k));
-    d.appendChild(el('div','ob-v',v));
-    if(sub) d.appendChild(el('div','ob-sub',sub));
-    return d;
-  };
-  bar.appendChild(cell(o.year+' Enterprise tag · funded by others',
-    MONEY0(o.revenue),
-    o.units+' deals · '+MONEY0(o.funded_amount)+' originated'));
-  bar.appendChild(el('div','ob-sep'));
-  bar.appendChild(cell('Your '+o.year+' revenue', MONEY0(mine),
-    'funded on your own deals'));
-  bar.appendChild(el('div','ob-sep'));
-  bar.appendChild(cell('Total on the Enterprise tag', MONEY0(mine+o.revenue),
-    (mine? Math.round(o.revenue/(mine+o.revenue)*100):0)+'% of it funded by others'));
-
-  const who=el('div','ob-who');
-  const top=Object.entries(o.by_owner||{}).slice(0,3)
-    .map(([n,v])=>n+' '+MONEY0(v.revenue));
-  who.innerHTML='Mostly renewals of merchants you sourced.'+
-    (top.length? '<br>Top: <b>'+top.join('</b> · <b>')+'</b>' : '');
-  bar.appendChild(who);
+  const c=el('div');
+  c.appendChild(el('div','ob-k',
+    'ENT deals funded by others · '+o.year+' YTD'));
+  c.appendChild(el('div','ob-v',
+    MONEY0(o.revenue)+'  ·  '+o.units+' deals'));
+  c.appendChild(el('div','ob-sub', MONEY0(o.funded_amount)+' originated'));
+  bar.appendChild(c);
+  bar.appendChild(el('div','ob-go','View deals ›'));
   bar.style.display='flex';
+}
+
+let OTHER_SORT={k:'fd',dir:-1};
+function openOther(){
+  const o=DATA.ent_other; if(!o||!o.deals) return;
+  document.getElementById('ovlsub').textContent=
+    o.year+' YTD · '+o.units+' deals · '+MONEY0(o.revenue)+' revenue';
+  drawOtherTable();
+  document.getElementById('otherovl').classList.add('on');
+}
+function closeOther(){ document.getElementById('otherovl').classList.remove('on'); }
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeOther(); });
+
+function drawOtherTable(){
+  const o=DATA.ent_other, body=document.getElementById('ovlbody');
+  const COLS=[['fd','Funded','d'],['name','Deal','t'],['owner','Deal owner','t'],
+    ['amt','Funded $','n'],['rev','Revenue','n'],['comm','Commission','n'],
+    ['type','Type','t'],['lender','Lender','t'],['pipeline','Pipeline','t'],
+    ['affiliate','Affiliate','t']];
+  const rows=o.deals.slice().sort((a,b)=>{
+    const k=OTHER_SORT.k, d=OTHER_SORT.dir;
+    const x=a[k], y=b[k];
+    if(typeof x==='number'||typeof y==='number') return ((x||0)-(y||0))*d;
+    return String(x||'').localeCompare(String(y||''))*d;
+  });
+  let h='<table><thead><tr>';
+  COLS.forEach(([k,lbl])=>{
+    const arr=OTHER_SORT.k===k?(OTHER_SORT.dir<0?' ▾':' ▴'):'';
+    h+='<th onclick="sortOther(\''+k+'\')">'+lbl+arr+'</th>';
+  });
+  h+='</tr></thead><tbody>';
+  const esc=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  rows.forEach(r=>{
+    h+='<tr>';
+    COLS.forEach(([k,,t])=>{
+      h+= t==='n' ? '<td class="num">'+(r[k]?MONEY0(r[k]):'—')+'</td>'
+                  : '<td>'+esc(r[k]||'—')+'</td>';
+    });
+    h+='</tr>';
+  });
+  const sum=k=>rows.reduce((a,r)=>a+(r[k]||0),0);
+  h+='</tbody><tfoot><tr><td colspan="3">'+rows.length+' deals</td>'+
+     '<td class="num">'+MONEY0(sum('amt'))+'</td>'+
+     '<td class="num">'+MONEY0(sum('rev'))+'</td>'+
+     '<td class="num">'+MONEY0(sum('comm'))+'</td>'+
+     '<td colspan="4"></td></tr></tfoot></table>';
+  body.innerHTML=h;
+}
+function sortOther(k){
+  OTHER_SORT = OTHER_SORT.k===k ? {k,dir:-OTHER_SORT.dir} : {k,dir:-1};
+  drawOtherTable();
 }
 
 /* ---------- goals -------------------------------------------------------- */
