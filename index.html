@@ -226,6 +226,12 @@ td.over{background:#FDEBE8;color:#B3261E;font-weight:700}
 tr:nth-child(even) td.over{background:#FAE2DE}
 #funnel tbody tr:hover td.over{background:#F7D8D3}
 .legend{display:flex;align-items:center;gap:7px;font-size:12px;color:#6B7593;margin-top:9px}
+/* Footnote under the P&L: what Revenue actually is, and why this and Casey's
+   Direct P&L sheet diverge (Larry, 11/10/26). */
+.pnlnote{margin-top:12px;padding:11px 14px;background:var(--bg);
+  border-left:3px solid var(--navy);border-radius:0 8px 8px 0;
+  font-size:12px;line-height:1.55;color:#4A5478;max-width:980px}
+.pnlnote b{color:var(--navy)}
 .legend i{display:inline-block;width:13px;height:13px;border-radius:3px;background:#FDEBE8;border:1px solid #E9BDB6}
 .tile.under .pace{color:var(--alert)}
 .tile.over .pace{color:#00A855}
@@ -369,7 +375,7 @@ td.est::after{content:" e";font-size:9px;vertical-align:super;opacity:.7}
   <div class="hdr-right">
     <div class="stamp">
       <b id="stamp">loading&hellip;</b>
-      <span id="policy">data as of Nov 10, 2026 3:16 PM</span>
+      <span id="policy">data as of Nov 10, 2026 3:20 PM</span>
     </div>
     <div class="tabs">
       <button class="tab on" data-view="funnel" onclick="showView('funnel')">Funnel</button>
@@ -3539,7 +3545,8 @@ function renderPnl(){
     ? ' · Total excludes '+label(cur)+' until the month closes'
     : '';
   document.getElementById('pnl-note').textContent=
-    'Revenue & affiliate payout by funded month · Marketplace Opportunity Cost '+
+    'Revenue = TOTAL revenue, not commission · by funded month · '+
+    'affiliate payout by funded month · Marketplace Opportunity Cost '+
     'estimated at $'+P.cost_per_lead.toFixed(2)+'/lead where no actual is given · '+
     'benefits at '+(P.benefits_rate*100).toFixed(1)+'% of salary + commissions'+noteExtra;
 }
